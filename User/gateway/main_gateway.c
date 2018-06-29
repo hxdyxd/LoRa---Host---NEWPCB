@@ -45,7 +45,7 @@ void TableMsgDeinit()
 	int i;
 	for(i=0;i<LORA_MAX_NODE_NUM;i++) {
 		TableMsg[i].online = 0;
-		TableMsg[i].HoppingFrequencieSeed = random_getRandomFreq(TickCounter, i);    // RFFrequency
+		TableMsg[i].HoppingFrequencieSeed = random_get_value();    // RFFrequency
 		TableMsg[i].SpreadingFactor = 9;        // 7 SpreadingFactor [6: 64, 7: 128, 8: 256, 9: 512, 10: 1024, 11: 2048, 12: 4096  chips]
 		TableMsg[i].SignalBw = 8;               // 9 SignalBw [0: 7.8kHz, 1: 10.4 kHz, 2: 15.6 kHz, 3: 20.8 kHz, 4: 31.2 kHz,
 												// 5: 41.6 kHz, 6: 62.5 kHz, 7: 125 kHz, 8: 250 kHz, 9: 500 kHz, other: Reserved]
@@ -63,7 +63,7 @@ void call_config(uint8_t *gmac)
 	/* 如果ID未分配完 */
 	if(gs_online_num < LORA_MAX_NODE_NUM) {
 		/* 等待接收完成 */
-		TableMsg[current_id].HoppingFrequencieSeed = random_getRandomTime(TickCounter);
+		TableMsg[current_id].HoppingFrequencieSeed = random_get_value();
 		len = lora_net_Gateway_Network_request(&lora[1], &TableMsg[current_id], gmac);
 		if( len == 19) {
 			APP_DEBUG("[new] device = %d\r\n", current_id);
@@ -156,6 +156,7 @@ int main(void)
 	systick_init();
 	leds_init();
     USART1_Config();
+	random_adc_config();
 	APP_DEBUG("USART1_Config\r\n");
 	APP_DEBUG("Build , %s %s \r\n", __DATE__, __TIME__);
 	
@@ -217,7 +218,7 @@ int main(void)
 		//lora[i].len = 0;
 		lora[i].RX_FLAG = 0;
 		
-		lora[i].TickCounter = &TickCounter;
+		//lora[i].TickCounter = &TickCounter;
 
 		
 		lora_net_init(&lora[i]);

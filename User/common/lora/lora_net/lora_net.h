@@ -12,27 +12,31 @@
 #include "type.h"
 #include "app_debug.h"
 
-typedef struct {
-	uint32_t TxTimeout;
-	uint32_t RxTimeout;
-	//uint64_t *TickCounter;
-
-	tLora loraConfigure;
-	//uint8_t buf[256];
-	//uint16_t len;
-	__IO uint8_t RX_FLAG;
-}LORA_NET;
-
 #pragma pack(1)
 
 typedef struct {
 	uint8_t Flag_version:4;
 	uint8_t Flag_type:3;
 	uint8_t Flag_direction:1;
-	uint8_t Data[127];
+	uint8_t Data[RF_BUFFER_SIZE];
 }LORA_ROUTE_PACK;
 
 #pragma pack()
+
+
+typedef struct {
+	uint32_t TxTimeout;
+	//uint64_t *TickCounter;
+
+	tLora loraConfigure;
+	
+	uint32_t RxTimeout;
+	//uint8_t buf[256];
+	//uint16_t len;
+	__IO uint8_t RX_FLAG;
+	LORA_ROUTE_PACK pack;
+}LORA_NET;
+
 
 #define FLAG_VER          (0)
 

@@ -55,6 +55,7 @@ int main(void)
 	systick_init();
 	leds_init();
     USART1_Config();
+	random_adc_config();
 	APP_DEBUG("USART1_Config\r\n");
 	APP_DEBUG("Build , %s %s \r\n", __DATE__, __TIME__);
 	
@@ -134,7 +135,7 @@ int main(void)
 			break;
 		case NODE_STATUS_OFFLINE:
 			//Network_request
-			Delay_ms( random_getRandomTime(TickCounter) );
+			Delay_ms( random_getRandomTime( random_get_value() ) );
 		
 			lora_net_Set_Config(&lora[0],  &publicMsg);
 			len = lora_net_Network_request(&lora[0], nmac, flash_config->gmac, &privateMsg);
@@ -145,7 +146,7 @@ int main(void)
 			break;
 		case NODE_STATUS_NOBINDED:
 			/* 获取自身ID */
-			Delay_ms( random_getRandomTime(TickCounter) );
+			Delay_ms( random_getRandomTime( random_get_value() ) );
 		
 			lora_net_Set_Config(&lora[0],  &publicMsg);
 			len = lora_net_Base_station_binding(&lora[0], nmac, temp_config.gmac);
