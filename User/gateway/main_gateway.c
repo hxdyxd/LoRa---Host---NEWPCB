@@ -234,10 +234,12 @@ int main(void)
 			len = lora_net_read_no_block( &lora[0], (uint8_t *)&pack);
 			
 			TableMsg[current_use_user_id].LastActive = TickCounter;
+			TableMsg[current_use_user_id].RxPacketSnrValue = SX1276LoRaGetPacketSnr( &lora[0].loraConfigure );
+			TableMsg[current_use_user_id].RxPacketRssiValue = SX1276LoRaGetPacketRssi( &lora[0].loraConfigure );
 
 			APP_DEBUG("NODE %d DAT = ", current_use_user_id);
 			lora_net_debug_hex(pack.Data, len - 1, 1);
-			APP_DEBUG("TIME = %d ms Rssi: %f\033[0m\r\n",(int)(TickCounter - RXtimer), SX1276LoRaReadRssi( &lora[0].loraConfigure) );
+			APP_DEBUG("TIME = %d ms Rssi: %g Snr = %d dB\033[0m\r\n",(int)(TickCounter - RXtimer), TableMsg[current_use_user_id].RxPacketRssiValue, TableMsg[current_use_user_id].RxPacketSnrValue);
 			
 			nextOnlineCurrentUserId();
 			lora_net_Gateway_User_data(&lora[0], gmac, 12, &TableMsg[current_use_user_id]);

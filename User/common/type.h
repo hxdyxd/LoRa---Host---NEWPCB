@@ -13,6 +13,7 @@ typedef struct sTableMsg
 	uint8_t ErrorCoding;
 	uint64_t LastActive;
 	double RxPacketRssiValue;
+	int8_t RxPacketSnrValue;
 }tTableMsg;
 
 
