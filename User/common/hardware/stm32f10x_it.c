@@ -25,6 +25,7 @@
 #include "stm32f10x_it.h"
 #include "app_debug.h"
 #include "leds.h"
+#include "type.h"
 
 /** @addtogroup STM32F10x_StdPeriph_Template
   * @{
@@ -68,7 +69,12 @@ void HardFault_Handler(void)
 	
 	while (1)
 	{
+#ifdef PCB_V2
 		led_rev(0);
+#else
+		led_rev(2);
+#endif
+		
 		Delay_10_72us(7200 * 100);
 	}
 }

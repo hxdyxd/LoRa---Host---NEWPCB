@@ -1,3 +1,8 @@
+/* Global Configuration 
+ *  By hxdyxd 
+ * 2018 07 05 CREAT
+*/
+
 #ifndef _TYPE_H
 #define _TYPE_H
 
@@ -23,7 +28,15 @@ typedef struct sConfig
 	uint8_t gmac[12];
 }tConfig;	
 
+//   #define PCB_V1  (1)
+//#define PCB_V2  (1)
+//   #define PCB_V3  (1)
+
+
 #define MAGIC_CONFIG  (0x78549261)
+
+
+#define LORA_MAX_NODE_NUM (16)
 
 #define TIMEOUT_ONLINE (60000)   //60s
 

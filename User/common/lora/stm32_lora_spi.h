@@ -1,14 +1,9 @@
-#ifndef _ROLA_SPI_H
-#define _ROLA_SPI_H
+#ifndef _LORA_SPI_H
+#define _LORA_SPI_H
 
 #include "stm32f10x.h"
 #include "systick.h"
 
-#define USE_SX1276_RADIO 1
-
-typedef char bool;
-#define false    0
-#define true     1
 
 void stm32_spi_init(void);
 void stm32_spi_cs_select(void);

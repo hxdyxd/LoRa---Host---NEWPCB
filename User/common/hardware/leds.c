@@ -1,15 +1,32 @@
 #include "leds.h"
 
-#define LED_NUM     (1)
+#define LED_NUM     (3)
 
 struct sGpio LED_GPIO[LED_NUM] = {
+	{
+		.RCC_APB2Periph = RCC_APB2Periph_GPIOB,
+		.GPIOx = GPIOB,
+		.GPIO_Pin = GPIO_Pin_3,
+	},
+	
+	{
+		.RCC_APB2Periph = RCC_APB2Periph_GPIOB,
+		.GPIOx = GPIOB,
+		.GPIO_Pin = GPIO_Pin_4,
+	},
+	
 	{
 		.RCC_APB2Periph = RCC_APB2Periph_GPIOC,
 		.GPIOx = GPIOC,
 		.GPIO_Pin = GPIO_Pin_13,
-	},
+	},	
 };
 
+void DisableJtag_enableSWD()
+{
+    RCC_APB2PeriphClockCmd(RCC_APB2Periph_AFIO | RCC_APB2Periph_GPIOB | RCC_APB2Periph_GPIOA, ENABLE);  //?a??AFIO®∫°¿?®Æ
+    GPIO_PinRemapConfig(GPIO_Remap_SWJ_JTAGDisable, ENABLE); //???1JTAG1|?®π
+}
 
 /**
   * @brief  ≈‰÷√÷∏∂®“˝Ω≈
@@ -33,6 +50,7 @@ static void LED_GPIO_Configuration(void)
 
 void leds_init(void)
 {
+	DisableJtag_enableSWD();
 	LED_GPIO_Configuration();
 }
 

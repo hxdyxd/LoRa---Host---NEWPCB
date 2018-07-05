@@ -30,7 +30,6 @@
 #define __SX1276_LORA_MISC_H__
 
 #include "sx1276-Hal.h"
-#include "sx1276.h"
 
 #include "sx1276-LoRa.h"
 

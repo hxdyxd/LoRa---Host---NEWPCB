@@ -162,7 +162,7 @@
             <CpuDllArguments></CpuDllArguments>
             <PeripheralDll></PeripheralDll>
             <PeripheralDllArguments></PeripheralDllArguments>
-            <InitializationFile></InitializationFile>
+            <InitializationFile>.\STM32DBG.ini</InitializationFile>
             <Driver>Segger\JL2CM3.dll</Driver>
           </TargetDlls>
         </DebugOption>
@@ -593,11 +593,6 @@
           <GroupName>HARDWARE</GroupName>
           <Files>
             <File>
-              <FileName>debug_usart.c</FileName>
-              <FileType>1</FileType>
-              <FilePath>..\User\common\hardware\debug_usart.c</FilePath>
-            </File>
-            <File>
               <FileName>flash.c</FileName>
               <FileType>1</FileType>
               <FilePath>..\User\common\hardware\flash.c</FilePath>
@@ -626,6 +621,21 @@
               <FileName>leds.c</FileName>
               <FileType>1</FileType>
               <FilePath>..\User\common\hardware\leds.c</FilePath>
+            </File>
+            <File>
+              <FileName>keys.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>..\User\common\hardware\keys.c</FilePath>
+            </File>
+            <File>
+              <FileName>interface_usart.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>..\User\common\hardware\interface_usart.c</FilePath>
+            </File>
+            <File>
+              <FileName>usart_rx.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>..\User\common\hardware\usart_rx.c</FilePath>
             </File>
           </Files>
         </Group>
@@ -723,6 +733,16 @@
               <FileName>main_node.c</FileName>
               <FileType>1</FileType>
               <FilePath>..\User\node\main_node.c</FilePath>
+            </File>
+          </Files>
+        </Group>
+        <Group>
+          <GroupName>DOC</GroupName>
+          <Files>
+            <File>
+              <FileName>README</FileName>
+              <FileType>5</FileType>
+              <FilePath>..\Doc\README</FilePath>
             </File>
           </Files>
         </Group>
@@ -1315,11 +1335,6 @@
           <GroupName>HARDWARE</GroupName>
           <Files>
             <File>
-              <FileName>debug_usart.c</FileName>
-              <FileType>1</FileType>
-              <FilePath>..\User\common\hardware\debug_usart.c</FilePath>
-            </File>
-            <File>
               <FileName>flash.c</FileName>
               <FileType>1</FileType>
               <FilePath>..\User\common\hardware\flash.c</FilePath>
@@ -1348,6 +1363,21 @@
               <FileName>leds.c</FileName>
               <FileType>1</FileType>
               <FilePath>..\User\common\hardware\leds.c</FilePath>
+            </File>
+            <File>
+              <FileName>keys.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>..\User\common\hardware\keys.c</FilePath>
+            </File>
+            <File>
+              <FileName>interface_usart.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>..\User\common\hardware\interface_usart.c</FilePath>
+            </File>
+            <File>
+              <FileName>usart_rx.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>..\User\common\hardware\usart_rx.c</FilePath>
             </File>
           </Files>
         </Group>
@@ -1445,6 +1475,16 @@
               <FileName>main_node.c</FileName>
               <FileType>1</FileType>
               <FilePath>..\User\node\main_node.c</FilePath>
+            </File>
+          </Files>
+        </Group>
+        <Group>
+          <GroupName>DOC</GroupName>
+          <Files>
+            <File>
+              <FileName>README</FileName>
+              <FileType>5</FileType>
+              <FilePath>..\Doc\README</FilePath>
             </File>
           </Files>
         </Group>

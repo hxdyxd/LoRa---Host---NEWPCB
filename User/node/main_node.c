@@ -2,7 +2,6 @@
 /* By hxdyxd */
 
 #include "stm32f10x.h"
-#include "debug_usart.h"
 #include "string.h"
 #include "sx1276-LoRa.h"
 #include "lora_net.h"
@@ -11,7 +10,10 @@
 #include "systick.h"
 #include "flash.h"
 #include "leds.h"
+#include "keys.h"
 #include "app_debug.h"
+#include "interface_usart.h"
+#include "usart_rx.h"
 
 #define LORA_MODE_NUM (1)
 
@@ -27,6 +29,11 @@ LORA_NET lora[LORA_MODE_NUM + 1];
 uint8_t node_stats = NODE_STATUS_OFFLINE;
 tTableMsg privateMsg, publicMsg;
 
+/*
+* timer
+*/
+uint64_t Timer1 = 0;
+uint64_t Timer2 = 0;
 
 void Delay_ms(__IO uint32_t i)
 {
@@ -40,7 +47,7 @@ void Delay_ms(__IO uint32_t i)
 int main(void)
 {
 	//uint8_t buf[255];
-	int len = 255;
+	int len = 0, usart_len = 0;
 	int i;
 	uint8_t *nmac = (uint8_t *)0x1FFFF7E8;
 	
@@ -48,13 +55,25 @@ int main(void)
 	tConfig *flash_config = (tConfig *)FLASH_Start_Addr;
 	
 	uint64_t timeout = TickCounter;
+	uint64_t random_delay_timer = TickCounter;
+	uint16_t random_delay_timeout = 4000;
 	
 	
 	NVIC_PriorityGroupConfig(NVIC_PriorityGroup_0);
 	
+	//clear config
+	//xfs_sava_cfg( (uint8_t *)&temp_config, sizeof(tConfig) );
+	
 	systick_init();
 	leds_init();
-    USART1_Config();
+	
+#ifdef PCB_V2
+	led_on(0);
+	led_off(1);
+#endif
+	
+    interface_usart_init();
+	usart_rx_isr_init();
 	random_adc_config();
 	APP_DEBUG("USART1_Config\r\n");
 	APP_DEBUG("Build , %s %s \r\n", __DATE__, __TIME__);
@@ -109,22 +128,38 @@ int main(void)
 		APP_DEBUG("NODE MODULE , NO BIND GATEWAY \r\n");
 	}
 	
+	random_delay_timeout = random_getRandomTime( random_get_value() );
 	
 	while(1) {
 		
-		//char *str = "To begin with,national parks are necessary in that they can protect the variety of species and help us learn about the environment.";
-		//char *str = "1234567887654321";
-		
+		usart_rx_proc();
 		
 		switch(node_stats)
 		{
 		case NODE_STATUS_ONLINE:
 			//User_data
 			lora_net_Set_Config(&lora[0],  &privateMsg);
-			len = lora_net_User_data(&lora[0], (uint8_t *)nmac, 12 );
+		
+			
+			usart_len = usart_rx_get_length();
+			if (usart_len == 0) {
+				len = lora_net_User_data(&lora[0], usart_rx_get_buffer_ptr(), 0 );
+			} else {
+				len = lora_net_User_data(&lora[0], usart_rx_get_buffer_ptr(), usart_len );
+				
+				APP_DEBUG("usart dat [%d] = ", usart_len);
+				lora_net_debug_hex(usart_rx_get_buffer_ptr(), usart_len, 1);
+		
+				usart_rx_release();
+			}
+			
 			if(len > 0) {
 				timeout = TickCounter;
+		#ifdef PCB_V2
 				led_rev(0);
+		#else
+				led_rev(2);
+		#endif
 			}
 			
 			if(TickCounter - timeout > TIMEOUT_ONLINE) {
@@ -135,7 +170,17 @@ int main(void)
 			break;
 		case NODE_STATUS_OFFLINE:
 			//Network_request
-			Delay_ms( random_getRandomTime( random_get_value() ) );
+		
+			/* Dalay */
+			if(TickCounter - random_delay_timer < random_delay_timeout) {
+				break;
+			}
+			random_delay_timer = TickCounter;
+			random_delay_timeout = random_getRandomTime( random_get_value() );
+			printf("Delay_ms = %d\r\n", random_delay_timeout);
+			/* Dalay end */
+			
+			//Delay_ms( random_getRandomTime( random_get_value() ) );
 		
 			lora_net_Set_Config(&lora[0],  &publicMsg);
 			len = lora_net_Network_request(&lora[0], nmac, flash_config->gmac, &privateMsg);
@@ -146,7 +191,17 @@ int main(void)
 			break;
 		case NODE_STATUS_NOBINDED:
 			/* 获取自身ID */
-			Delay_ms( random_getRandomTime( random_get_value() ) );
+			
+			/* Dalay */
+			if(TickCounter - random_delay_timer < random_delay_timeout) {
+				break;
+			}
+			random_delay_timer = TickCounter;
+			random_delay_timeout = random_getRandomTime( random_get_value() );
+			printf("Delay_ms = %d\r\n", random_delay_timeout);
+			/* Dalay end */
+		
+			//Delay_ms( random_getRandomTime( random_get_value() ) );
 		
 			lora_net_Set_Config(&lora[0],  &publicMsg);
 			len = lora_net_Base_station_binding(&lora[0], nmac, temp_config.gmac);
@@ -163,6 +218,39 @@ int main(void)
 		default:
 			break;
 		}
+		
+		if( (TickCounter - Timer2) > 200 ) {
+			//200ms callback
+			Timer2 = TickCounter;
+		#ifdef PCB_V2
+			if(node_stats == NODE_STATUS_OFFLINE) {
+				//offline
+				led_on(0);  //red on
+				led_off(1);  //blue off
+			} else if(node_stats == NODE_STATUS_ONLINE) {
+				//online
+				led_on(1);
+			} else {
+				led_on(0);  //red on
+				led_rev(1);
+			}
+		#endif
+		}
+		
+		if(node_stats != NODE_STATUS_NOBINDED &&
+	#ifdef PCB_V2
+		key_read(0) == Bit_RESET
+	#else
+		key_read(1) == Bit_RESET
+	#endif
+		) {
+			//press
+			//clear config
+			temp_config.isconfig = 0x00000000;
+			xfs_sava_cfg( (uint8_t *)&temp_config, sizeof(tConfig) );
+			node_stats = NODE_STATUS_NOBINDED;
+		}
+		
 		
 	}
 }

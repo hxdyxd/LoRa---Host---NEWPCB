@@ -22,8 +22,9 @@
 #define __SX1276_LORA_H__
 
 
-//#include "sx1276.h"
+#include "sx1276.h"
 #include "sx1276-Hal.h"
+
 
 //#include "sx1276-LoRaMisc.h"
 
