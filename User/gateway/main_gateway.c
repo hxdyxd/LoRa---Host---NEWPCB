@@ -49,6 +49,13 @@ uint64_t RXtimer = 0;
 uint64_t Timer1 = 0;
 uint64_t Timer2 = 0;
 
+/*
+* write
+*/
+uint8_t gs_write_buf[256];
+uint8_t gs_write_len = 0;
+uint8_t GATEWAY_BUST_FLAG = 1;   //1: no busy
+
 void TableMsgDeinit()
 {
 	int i;
@@ -58,8 +65,9 @@ void TableMsgDeinit()
 		TableMsg[i].SpreadingFactor = 9;        // 7 SpreadingFactor [6: 64, 7: 128, 8: 256, 9: 512, 10: 1024, 11: 2048, 12: 4096  chips]
 		TableMsg[i].SignalBw = 8;               // 9 SignalBw [0: 7.8kHz, 1: 10.4 kHz, 2: 15.6 kHz, 3: 20.8 kHz, 4: 31.2 kHz,
 												// 5: 41.6 kHz, 6: 62.5 kHz, 7: 125 kHz, 8: 250 kHz, 9: 500 kHz, other: Reserved]
-		TableMsg[i].ErrorCoding = 2;            // ErrorCoding [1: 4/5, 2: 4/6, 3: 4/7, 4: 4/8]
+		TableMsg[i].ErrorCoding = 3;            // ErrorCoding [1: 4/5, 2: 4/6, 3: 4/7, 4: 4/8]
 		TableMsg[i].RxPacketRssiValue = 0;
+		TableMsg[i].RxPacketSnrValue = 0;
 		memset(TableMsg[i].nmac, 0, 12);            //macaddr
 	}
 }
@@ -163,16 +171,102 @@ void lora_put_data_callback(void)
 	/* next user id */
 	nextOnlineCurrentUserId();
 	
-	len = usart_rx_get_length();
-	if (len == 0) {
-		lora_net_Gateway_User_data(&lora[0], usart_rx_get_buffer_ptr(), 0, &TableMsg[current_use_user_id]);
+	if ( GATEWAY_BUST_FLAG == DEVICE_NO_BUSY ) {
+		lora_net_Gateway_User_data(&lora[0], gs_write_buf, 0, &TableMsg[current_use_user_id]);
 	} else {
-		lora_net_Gateway_User_data(&lora[0], usart_rx_get_buffer_ptr(), len, &TableMsg[current_use_user_id]);
+		int i;
 		
-		APP_DEBUG("usart dat [%d] = ", len);
-		lora_net_debug_hex(usart_rx_get_buffer_ptr(), len, 1);
+		for(i=0;i<LORA_MAX_NODE_NUM;i++) {
+			if( memcmp(gs_write_buf, TableMsg[i].nmac, 12 ) == 0 && TableMsg[i].online ) {
+				lora_net_Gateway_User_data(&lora[0], gs_write_buf + 12, gs_write_len - 12, &TableMsg[i]);
+				
+				APP_DEBUG("send to %d node [%d] = ", i, gs_write_len - 12);
+				lora_net_debug_hex(gs_write_buf + 12, gs_write_len - 12, 1);
+				
+				GATEWAY_BUST_FLAG = DEVICE_NO_BUSY;
+				return;
+			}
+		}
+		
+		APP_DEBUG("[offline] Can't send, usart dat [%d] = ", len);
+		
+		GATEWAY_BUST_FLAG = DEVICE_NO_BUSY;
+	}
+}
+
+void usart_rx_callback(void)
+{
+	uint8_t cmd = 0;
+	uint32_t fhkey;
+	struct sGatewayUsartStatus usartStatus;
+	uint8_t len;
+	
+	int i;
+	uint8_t *usart_buffer = usart_rx_get_buffer_ptr();
+	switch( usart_buffer[0] )
+	{
+	case USART_API_READ_STATUS:
+		/* CMD(1) + [ NMAC（12） + FHKEY(4) + Rssi(2) + SNR(1) ] + [ ... ] ... */
+		cmd = USART_API_READ_STATUS | 0x80;
+	
+		interface_usart_write_wait();
+		interface_usart_write( &cmd, 1);
+
+		for(i=0;i<LORA_MAX_NODE_NUM;i++) {
+			if( TableMsg[i].online ) {
+				memcpy(usartStatus.nmac, TableMsg[i].nmac, 12);
+				
+				fhkey = TableMsg[i].HoppingFrequencieSeed;
+				usartStatus.fhkey[0] = fhkey >> 24;
+				usartStatus.fhkey[1] = (fhkey >> 16) & 0xff;
+				usartStatus.fhkey[2] = (fhkey >> 8)  & 0xff;
+				usartStatus.fhkey[3] = fhkey & 0xff;
+
+				int16_t rssi =  TableMsg[i].RxPacketRssiValue;
+				usartStatus.rssi[0] = (*((uint16_t *)&rssi) >> 8) & 0xff;
+				usartStatus.rssi[1] = *((uint16_t *)&rssi) & 0xff;
+				
+				usartStatus.snr = (int8_t)TableMsg[i].RxPacketSnrValue;
+				
+				uint16_t diff_lat = (TickCounter - TableMsg[i].LastActive);
+				usartStatus.diff_lat[0] = (diff_lat >> 8) & 0xff;
+				usartStatus.diff_lat[1] = diff_lat & 0xff;
+				
+				interface_usart_write( usartStatus.nmac, sizeof(struct sGatewayUsartStatus) );
+			}
+		}
+		usart_rx_release();
+		
+		APP_DEBUG("usart read status, online num = %d\r\n", gs_online_num);
+		break;
+	
+	case USART_API_READ_BUSY:
+		/* CMD(1) + STATUS（1） */
+		cmd = USART_API_READ_BUSY | 0x80;
+	
+		interface_usart_write_wait();
+		interface_usart_write( &cmd, 1);
+		interface_usart_write( &GATEWAY_BUST_FLAG, 1);
+		usart_rx_release();
+	
+		APP_DEBUG("usart busy = %d\r\n", GATEWAY_BUST_FLAG);
+		break;
+	
+	case USART_API_SEND_USER_DATA:
+		len = usart_rx_get_length();
+		if( len >= 13 && GATEWAY_BUST_FLAG == 1 ) {
+			gs_write_len = len - 1;
+			memcpy(gs_write_buf, usart_rx_get_buffer_ptr() + 1, gs_write_len);
+			GATEWAY_BUST_FLAG = 0;
+		} else {
+			APP_DEBUG("[ busy ] usart data [%d] = \r\n", len - 1);
+		}
 		
 		usart_rx_release();
+		break;
+	default:
+		
+		break;
 	}
 }
 
@@ -196,6 +290,7 @@ int main(void)
 	
     interface_usart_init();
 	usart_rx_isr_init();
+	stm32_dma_init();
 	random_adc_config();
 	APP_DEBUG("USART1_Config\r\n");
 	APP_DEBUG("Build , %s %s \r\n", __DATE__, __TIME__);
@@ -264,7 +359,7 @@ int main(void)
 	while(1) {
 		
 		lora_net_proc(lora, LORA_MODE_NUM);
-		usart_rx_proc();
+		usart_rx_proc(usart_rx_callback);
 		
 		
 		if( lora[0].RX_FLAG ) {	
@@ -278,7 +373,11 @@ int main(void)
 			
 			if(len - 1 > 0) {
 				/* 用户数据格式  */
-				/* 源地址（12） + 本机地址（12） + 数据（n） */
+				/* CMD(1) + 源地址（12） + 本机地址（12） + 数据（n） */
+				uint8_t cmd = USART_API_SEND_USER_DATA | 0x80;
+				
+				interface_usart_write_wait();
+				interface_usart_write( &cmd, 1);
 				interface_usart_write(TableMsg[current_use_user_id].nmac , 12);
 				interface_usart_write(gmac , 12);
 				interface_usart_write(pack.Data, len - 1);
@@ -318,7 +417,7 @@ int main(void)
 			
 		}
 		
-		if( (TickCounter - Timer1) > 5000 ) {
+		if( (TickCounter - Timer1) > 15000 ) {
 			Timer1 = TickCounter;
 			//5s callback
 			

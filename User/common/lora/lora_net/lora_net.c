@@ -204,7 +204,7 @@ void lora_net_Set_Config(LORA_NET *netp, tTableMsg *msg)
 }
 
 
-int lora_net_User_data(LORA_NET *netp, uint8_t *buffer, uint8_t len)
+int lora_net_User_data(LORA_NET *netp, uint8_t *send_buffer, uint8_t len, uint8_t *read_buffer)
 {
 	int n;
 	
@@ -219,18 +219,16 @@ int lora_net_User_data(LORA_NET *netp, uint8_t *buffer, uint8_t len)
 	} else {
 		
 		if(netp->pack.Flag_version == FLAG_VER && netp->pack.Flag_direction == FLAG_DIR_DOWN && netp->pack.Flag_type == FLAG_TYPE_USER_DATA) {
-			
-			APP_DEBUG("GATEWAY USER DATA = ");
-			lora_net_debug_hex( netp->pack.Data, n - 1, 1);
+			memcpy( read_buffer, netp->pack.Data, n - 1);
 			
 			netp->pack.Flag_version = FLAG_VER;
 			netp->pack.Flag_type = FLAG_TYPE_USER_DATA;
 			netp->pack.Flag_direction = FLAG_DIR_UP;
 			
-			memcpy( netp->pack.Data, buffer, len);
+			memcpy( netp->pack.Data, send_buffer, len);
 			lora_net_write(netp, (uint8_t *)&netp->pack, len + 1);
 			
-			return (len + 1);
+			return (n - 1);
 		}
 		APP_WARN(" Flag_version = %d, Flag_type = %d, Flag_direction = %d, len = %d \r\n", netp->pack.Flag_version, netp->pack.Flag_type, netp->pack.Flag_direction, n);
 	}
