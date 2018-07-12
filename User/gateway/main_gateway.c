@@ -12,8 +12,9 @@
 #include "app_debug.h"
 #include "interface_usart.h"
 #include "usart_rx.h"
+#include "soft_timer.h"
 
-#define LORA_MODE_NUM (2)
+#define LORA_MODEL_NUM (2)
 
 #define ONLINE_NUM_DEC(i) do{\
 							gs_online_num--;\
@@ -28,7 +29,7 @@ uint8_t *gmac = (uint8_t *)0x1FFFF7E8;
 /*
  *  model message
 */
-LORA_NET lora[LORA_MODE_NUM ];
+LORA_NET lora[LORA_MODEL_NUM ];
 
 /*
  *  node message
@@ -73,58 +74,6 @@ void TableMsgDeinit()
 }
 
 
-void call_config(uint8_t *gmac)
-{
-	int len;
-	int i;
-	/* 如果ID未分配完 */
-	if(gs_online_num < LORA_MAX_NODE_NUM) {
-		
-		//find free current index
-		current_id = LORA_MAX_NODE_NUM;
-		for(i=0;i<LORA_MAX_NODE_NUM;i++) {
-			if(TableMsg[i].online == 0) {
-				current_id = i;
-				break;
-			}
-		}
-		
-		if(i == LORA_MAX_NODE_NUM) {
-			APP_ERROR("[bug]  gs_online_num = %d\r\n", gs_online_num);
-		}
-		
-		/* 等待接收完成 */
-		TableMsg[current_id].HoppingFrequencieSeed = random_get_value();
-		len = lora_net_Gateway_Network_request(&lora[1], &TableMsg[current_id], gmac);
-		if( len == 19) {
-			APP_DEBUG("[new] device = %d\r\n", current_id);
-			TableMsg[current_id].LastActive = TickCounter;
-			TableMsg[current_id].online = 1;
-			gs_online_num++;
-			
-			//same nmac only one
-			for(i=0;i<LORA_MAX_NODE_NUM;i++) {
-				if(i==current_id) {
-					continue;
-				}
-				
-				if(memcmp(TableMsg[current_id].nmac, TableMsg[i].nmac, 12) == 0 && TableMsg[i].online == 1) {
-					//refresh
-					APP_DEBUG("[refresh]  node = ");
-					lora_net_debug_hex(TableMsg[i].nmac, 12, 1);
-					
-					ONLINE_NUM_DEC(i);
-				}
-			}
-			
-		}
-	} else {
-		// lost
-		if( lora[1].RX_FLAG ) {
-			lora[1].RX_FLAG = 0;
-		}
-	}
-}
 
 void checkOnline()
 {
@@ -270,13 +219,149 @@ void usart_rx_callback(void)
 	}
 }
 
+void private_write_timeout_callback()
+{
+	if( gs_online_num ) {
+		APP_WARN("Node %d Timeout use %d\r\n", current_use_user_id, TableMsg[current_use_user_id].HoppingFrequencieSeed);
+	
+		lora_put_data_callback();
+		RXtimer = TickCounter;
+	}
+}
+
+
+void private_message_callback(struct sLORA_NET *netp)
+{
+	int len = netp->pack.size;
+	
+	TableMsg[current_use_user_id].LastActive = TickCounter;
+	TableMsg[current_use_user_id].RxPacketSnrValue = SX1276LoRaGetPacketSnr( &netp->loraConfigure );
+	TableMsg[current_use_user_id].RxPacketRssiValue = SX1276LoRaGetPacketRssi( &netp->loraConfigure );
+	
+	if(len > 1) {
+		/* 用户数据格式  */
+		/* CMD(1) + 源地址（12） + 本机地址（12） + 数据（n） */
+		uint8_t cmd = USART_API_SEND_USER_DATA | 0x80;
+		
+		interface_usart_write_wait();
+		interface_usart_write( &cmd, 1);
+		interface_usart_write(TableMsg[current_use_user_id].nmac , 12);
+		interface_usart_write(gmac , 12);
+		interface_usart_write(netp->pack.Data, len - 1);
+		APP_DEBUG("Node %d data = ", current_use_user_id);
+		lora_net_debug_hex(netp->pack.Data, len - 1, 1);
+	} else {
+		APP_DEBUG("Node %d is Live \r\n", current_use_user_id);
+	}
+
+
+	//APP_DEBUG("time = %d ms Rssi: %g Snr = %d dB\033[0m\r\n",(int)(TickCounter - RXtimer), TableMsg[current_use_user_id].RxPacketRssiValue, TableMsg[current_use_user_id].RxPacketSnrValue);
+	
+	lora_put_data_callback();
+	soft_timer_create(GATEWAY_TIMER_PRIVATE_MSG_TIMEOUT, 1, 1, private_write_timeout_callback, PACK_TIMEOUT);
+	RXtimer = TickCounter;
+	
+#ifdef PCB_V2
+	led_rev(0);  //red
+#endif
+}
+
+
+void public_message_callback(struct sLORA_NET *netp)
+{
+	int len;
+	int i;
+	/* 如果ID未分配完 */
+	if(gs_online_num < LORA_MAX_NODE_NUM) {
+		
+		//find free current index
+		current_id = LORA_MAX_NODE_NUM;
+		for(i=0;i<LORA_MAX_NODE_NUM;i++) {
+			if(TableMsg[i].online == 0) {
+				current_id = i;
+				break;
+			}
+		}
+		
+		if(i == LORA_MAX_NODE_NUM) {
+			APP_ERROR("[bug]  gs_online_num = %d\r\n", gs_online_num);
+		}
+		
+		/* 等待接收完成 */
+		TableMsg[current_id].HoppingFrequencieSeed = random_get_value();
+		len = lora_net_Gateway_Network_request(netp, &TableMsg[current_id], gmac);
+		if( len == 19) {
+			APP_DEBUG("[new] device = %d\r\n", current_id);
+			TableMsg[current_id].LastActive = TickCounter;
+			TableMsg[current_id].online = 1;
+			gs_online_num++;
+			
+			//same nmac only one
+			for(i=0;i<LORA_MAX_NODE_NUM;i++) {
+				if(i==current_id) {
+					continue;
+				}
+				
+				if(memcmp(TableMsg[current_id].nmac, TableMsg[i].nmac, 12) == 0 && TableMsg[i].online == 1) {
+					//refresh
+					APP_DEBUG("[refresh]  node = ");
+					lora_net_debug_hex(TableMsg[i].nmac, 12, 1);
+					
+					ONLINE_NUM_DEC(i);
+				}
+			}
+			
+		}
+	}
+	/* end */
+}
+
+void led_status_callback()
+{
+	static int led_status = 0;
+	static int i;
+	
+	if(gs_online_num == 0) {
+		led_status = 0;
+	} else if( led_status && i<=0 ) {
+		i = 15;
+		led_status = 0;
+	} else if( led_status==0 && i<=0 ) {
+		i = gs_online_num * 2;
+		led_status = 1;
+	}
+	if( i>=0 ) {
+		i--;
+	}
+	
+	if(led_status) {
+		
+#ifdef PCB_V2
+		led_rev(1);  //blue
+#else
+		led_rev(2);
+#endif
+		
+	} else {
+		
+#ifdef PCB_V2
+		led_off(1);  //blue low = off
+#else
+		led_on(2);  //high = off
+#endif	
+		
+	}
+}
+
+
+void online_num_tips_callback()
+{
+	APP_DEBUG("ONLINE NUM \t = \t %d \r\n", gs_online_num);
+}
 
 int main(void)
 {
-	LORA_ROUTE_PACK pack;
-	int len = 0;
 	int i;
-	int led_status = 0;
 	
 	NVIC_PriorityGroupConfig(NVIC_PriorityGroup_0);
 	
@@ -290,7 +375,7 @@ int main(void)
 	
     interface_usart_init();
 	usart_rx_isr_init();
-	stm32_dma_init();
+	//stm32_dma_init();
 	random_adc_config();
 	APP_DEBUG("USART1_Config\r\n");
 	APP_DEBUG("Build , %s %s \r\n", __DATE__, __TIME__);
@@ -300,7 +385,7 @@ int main(void)
 	
 	TableMsgDeinit();
 	
-	for(i=0;i<LORA_MODE_NUM;i++) {
+	for(i=0;i<LORA_MODEL_NUM;i++) {
 		/* Fill Default Value */
 		SX1276LoRaDeinit( &lora[i].loraConfigure );
 		
@@ -323,6 +408,8 @@ int main(void)
 			lora[i].loraConfigure.random_getRandomFreq = random_getRandomFreq;
 			lora[i].loraConfigure.LoRaSettings.FreqHopOn = true;
 			
+			lora[i].lora_net_rx_callback = private_message_callback;
+			
 		} else if(i == 1) {
 			
 			lora[i].loraConfigure.LoraLowLevelFunc.SX1276InitIo = SX1276InitIo2;
@@ -343,124 +430,33 @@ int main(void)
 			lora[i].loraConfigure.HoppingFrequencieSeed = 0;
 			lora[i].loraConfigure.random_getRandomFreq = random_getRandomFreq;
 			lora[i].loraConfigure.LoRaSettings.FreqHopOn = true;
+			
+			lora[i].lora_net_rx_callback = public_message_callback;
 		}
 		
 
 
 		lora[i].loraConfigure.LoRaSettings.TxPacketTimeout = 1000;
 		lora[i].loraConfigure.LoRaSettings.RxPacketTimeout = 1000;
-		lora[i].RX_FLAG = 0;
-
-
 		
 		lora_net_init(&lora[i]);
 	}
 	
+	//定时器配置
+	soft_timer_init();
+	
+	/* always running  */
+	soft_timer_create(GATEWAY_TIMER_STATUS, 1, 1, online_num_tips_callback, 15000);  //15s
+	soft_timer_create(GATEWAY_TIMER_LEDS, 1, 1, led_status_callback, 200);  //200ms
+	
+	/* always running, 单节点查询超时，接收到私有信道数据后重置 */
+	soft_timer_create(GATEWAY_TIMER_PRIVATE_MSG_TIMEOUT, 1, 1, private_write_timeout_callback, PACK_TIMEOUT);
+	
 	while(1) {
 		
-		lora_net_proc(lora, LORA_MODE_NUM);
-		usart_rx_proc(usart_rx_callback);
-		
-		
-		if( lora[0].RX_FLAG ) {	
-			//private msg callback
-			
-			len = lora_net_read_no_block( &lora[0], (uint8_t *)&pack);
-			
-			TableMsg[current_use_user_id].LastActive = TickCounter;
-			TableMsg[current_use_user_id].RxPacketSnrValue = SX1276LoRaGetPacketSnr( &lora[0].loraConfigure );
-			TableMsg[current_use_user_id].RxPacketRssiValue = SX1276LoRaGetPacketRssi( &lora[0].loraConfigure );
-			
-			if(len - 1 > 0) {
-				/* 用户数据格式  */
-				/* CMD(1) + 源地址（12） + 本机地址（12） + 数据（n） */
-				uint8_t cmd = USART_API_SEND_USER_DATA | 0x80;
-				
-				interface_usart_write_wait();
-				interface_usart_write( &cmd, 1);
-				interface_usart_write(TableMsg[current_use_user_id].nmac , 12);
-				interface_usart_write(gmac , 12);
-				interface_usart_write(pack.Data, len - 1);
-				APP_DEBUG("Node %d data = ", current_use_user_id);
-				lora_net_debug_hex(pack.Data, len - 1, 1);
-			} else {
-				APP_DEBUG("Node %d is Live \r\n", current_use_user_id);
-			}
-
-
-			//APP_DEBUG("time = %d ms Rssi: %g Snr = %d dB\033[0m\r\n",(int)(TickCounter - RXtimer), TableMsg[current_use_user_id].RxPacketRssiValue, TableMsg[current_use_user_id].RxPacketSnrValue);
-			
-			lora_put_data_callback();
-			RXtimer = TickCounter;
-			
-		#ifdef PCB_V2
-			led_rev(0);  //red
-		#endif
-		}
-		
-		if( lora[1].RX_FLAG ) {
-			//public msg callback
-			
-			call_config(gmac);
-		}
-		
-		if( (TickCounter - RXtimer) > PACK_TIMEOUT ) {
-			
-			//private msg timeout callback
-			
-			if( gs_online_num ) {
-				APP_WARN("NODE %d Timeout use %d\r\n", current_use_user_id, TableMsg[current_use_user_id].HoppingFrequencieSeed);
-			
-				lora_put_data_callback();
-				RXtimer = TickCounter;
-			}
-			
-		}
-		
-		if( (TickCounter - Timer1) > 15000 ) {
-			Timer1 = TickCounter;
-			//5s callback
-			
-			APP_DEBUG("ONLINE NUM \t = \t %d \r\n", gs_online_num);
-		}
-		
-		if( (TickCounter - Timer2) > 200 ) {
-			Timer2 = TickCounter;
-			//200ms callback
-			
-			
-			if(gs_online_num == 0) {
-				led_status = 0;
-			} else if( led_status && i<=0 ) {
-				i = 15;
-				led_status = 0;
-			} else if( led_status==0 && i<=0 ) {
-				i = gs_online_num * 2;
-				led_status = 1;
-			}
-			if( i>=0 ) {
-				i--;
-			}
-			
-			if(led_status) {
-				
-		#ifdef PCB_V2
-				led_rev(1);  //blue
-		#else
-				led_rev(2);
-		#endif
-				
-			} else {
-				
-		#ifdef PCB_V2
-				led_off(1);  //blue low = off
-		#else
-				led_on(2);  //high = off
-		#endif	
-				
-			}
-		}
-		
+		lora_net_proc(lora, LORA_MODEL_NUM);   //LORA接收数据处理
+		usart_rx_proc(usart_rx_callback);     //串口接收数据处理
+		soft_timer_proc();                    //定时器处理
 		
 		/* end poll */
 	}

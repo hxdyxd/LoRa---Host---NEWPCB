@@ -13,24 +13,20 @@ int lora_net_init(LORA_NET *netp)
 }
 
 
-void lora_net_proc(LORA_NET *netp, int lora_num)
+void lora_net_proc(LORA_NET *netp, int lora_max_num)
 {
 	uint32_t stat;
 	int i;
-	for(i=0;i<lora_num;i++) {
+	for(i=0;i<lora_max_num;i++) {
 		stat = SX1276LoRaProcess(&netp[i].loraConfigure);
 		switch(stat)
 		{
 		case RF_RX_DONE:
-			if( !netp[i].RX_FLAG ) {
-				//SX1276LoRaGetRxPacket(&netp[i].loraConfigure, netp[i].buf, &netp[i].len);
-				netp[i].RX_FLAG = 1;
-			} else {
-				APP_ERROR("pack lost = %d\r\n", i);
-			}
+			SX1276LoRaGetRxPacket( &netp[i].loraConfigure, &netp[i].pack, &netp[i].pack.size );
+			netp[i].lora_net_rx_callback( &netp[i] );   //User callback function
 			break;
 		case RF_TX_DONE:
-			SX1276LoRaStartRx(&netp[i].loraConfigure);
+			SX1276LoRaStartRx( &netp[i].loraConfigure );
 			break;
 		default:
 			//APP_ERROR("stat = %d\r\n", stat);
@@ -39,16 +35,6 @@ void lora_net_proc(LORA_NET *netp, int lora_num)
 	}
 }
 
-int lora_net_read_no_block(LORA_NET *netp, uint8_t *buffer)
-{
-	uint16_t len;
-	//memcpy(buffer, netp->buf, netp->len);
-	//APP_DEBUG(" test = %d, %d\r\n", netp->RxTimeout, netp->TxTimeout);
-	
-	SX1276LoRaGetRxPacket(&netp->loraConfigure, buffer, &len);
-	netp->RX_FLAG = 0;
-	return len;
-}
 
 int lora_net_write_no_block(LORA_NET *netp, uint8_t *buffer, uint8_t len)
 {
@@ -142,10 +128,9 @@ void lora_net_Gateway_User_data(LORA_NET *netp, uint8_t *buffer, uint8_t len, tT
 
 int lora_net_Gateway_Network_request(LORA_NET *netp, tTableMsg *msg, uint8_t *gmac)
 {
-	int n;
+	int n = netp->pack.size;
 	uint32_t timer = TickCounter;
 	
-	n = lora_net_read_no_block(netp, (uint8_t *)&netp->pack);
 	if(netp->pack.Flag_version == FLAG_VER && netp->pack.Flag_direction == FLAG_DIR_UP && netp->pack.Flag_type == FLAG_TYPE_NETWORK_REQUEST && n == 25) {
 		if(memcmp( gmac, netp->pack.Data + 12, 12) == 0) { /* give me */
 			memcpy( msg->nmac, netp->pack.Data, 12);
@@ -214,7 +199,7 @@ int lora_net_User_data(LORA_NET *netp, uint8_t *send_buffer, uint8_t len, uint8_
 	
 	n = lora_net_read(netp, (uint8_t *)&netp->pack);
 	
-	if(n < 0) {
+	if(n < 1) {
 		APP_WARN("Timeout use %d\r\n", netp->loraConfigure.HoppingFrequencieSeed);
 	} else {
 		
@@ -232,7 +217,7 @@ int lora_net_User_data(LORA_NET *netp, uint8_t *send_buffer, uint8_t len, uint8_
 		}
 		APP_WARN(" Flag_version = %d, Flag_type = %d, Flag_direction = %d, len = %d \r\n", netp->pack.Flag_version, netp->pack.Flag_type, netp->pack.Flag_direction, n);
 	}
-	return 0;
+	return -1;
 }
 
 
@@ -261,7 +246,7 @@ int lora_net_Network_request(LORA_NET *netp, uint8_t *nmac, uint8_t *gmac, tTabl
 	}
 	
 	len = lora_net_read(netp, (uint8_t *)&netp->pack);
-	if(len < 0) {
+	if(len < 1) {
 		APP_WARN("Timeout use %d\r\n", netp->loraConfigure.HoppingFrequencieSeed);
 	} else {
 		if(netp->pack.Flag_version == FLAG_VER && netp->pack.Flag_direction == FLAG_DIR_DOWN && netp->pack.Flag_type == FLAG_TYPE_NETWORK_REQUEST && len == 19) {
@@ -313,7 +298,7 @@ int lora_net_Base_station_binding(LORA_NET *netp, uint8_t *nmac, uint8_t *gmac)
 	}
 	
 	len = lora_net_read(netp, (uint8_t *)&netp->pack);
-	if(len < 0) {
+	if(len < 1) {
 		APP_WARN("Timeout use %d\r\n", netp->loraConfigure.HoppingFrequencieSeed);
 	} else {
 		if(netp->pack.Flag_version == FLAG_VER && netp->pack.Flag_direction == FLAG_DIR_DOWN && netp->pack.Flag_type == FLAG_TYPE_BASE_STATION_BINDING && len == 25) {

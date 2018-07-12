@@ -11,7 +11,7 @@
 /* configuration */
 
 //   #define PCB_V1  (1)
-//#define PCB_V2  (1)
+#define PCB_V2  (1)
 //   #define PCB_V3  (1)
 
 
@@ -34,6 +34,10 @@
 #define NODE_STATUS_ONLINE      (0)
 #define NODE_STATUS_OFFLINE     (1)
 #define NODE_STATUS_NOBINDED    (2)
+
+#define GATEWAY_TIMER_STATUS                  (0)
+#define GATEWAY_TIMER_LEDS                    (1)
+#define GATEWAY_TIMER_PRIVATE_MSG_TIMEOUT     (2)
 
 
 /* global typedef */

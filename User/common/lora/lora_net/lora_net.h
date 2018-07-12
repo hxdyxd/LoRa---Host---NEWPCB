@@ -19,21 +19,15 @@ typedef struct {
 	uint8_t Flag_type:3;
 	uint8_t Flag_direction:1;
 	uint8_t Data[RF_BUFFER_SIZE];
+	uint16_t size;
 }LORA_ROUTE_PACK;
 
 #pragma pack()
 
 
-typedef struct {
-	uint32_t TxTimeout;
-	//uint64_t *TickCounter;
-
+typedef struct sLORA_NET {
+	void (* lora_net_rx_callback)(struct sLORA_NET *netp);
 	tLora loraConfigure;
-	
-	uint32_t RxTimeout;
-	//uint8_t buf[256];
-	//uint16_t len;
-	__IO uint8_t RX_FLAG;
 	LORA_ROUTE_PACK pack;
 }LORA_NET;
 
@@ -51,7 +45,7 @@ typedef struct {
 
 int lora_net_init(LORA_NET *netp);
 
-void lora_net_proc(LORA_NET *netp, int lora_num);
+void lora_net_proc(LORA_NET *netp, int lora_max_num);
 
 int lora_net_read_no_block(LORA_NET *netp, uint8_t *buffer);
 

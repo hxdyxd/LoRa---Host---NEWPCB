@@ -179,13 +179,12 @@ int main(void)
 			
 		}
 		
-		lora[i].TxTimeout = 1000;
-		lora[i].RxTimeout = 2000;
+
 		lora[i].loraConfigure.LoRaSettings.TxPacketTimeout = 1000;
-		lora[i].loraConfigure.LoRaSettings.RxPacketTimeout = 2000;
+		lora[i].loraConfigure.LoRaSettings.RxPacketTimeout = 1000;
+		lora[i].RX_FLAG = 0;
 		
 		
-		//lora[i].TickCounter = &TickCounter;
 		
 		lora_net_init(&lora[i]);
 	}
