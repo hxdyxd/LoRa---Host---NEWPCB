@@ -57,7 +57,8 @@ void lora_net_debug_hex(uint8_t *p, uint8_t len, uint8_t lf);
 void lora_net_Set_Config(LORA_NET *netp, tTableMsg *msg);
 
 //gateway
-void lora_net_Gateway_User_data(LORA_NET *netp, uint8_t *buffer, uint8_t len, tTableMsg *msg);
+void lora_net_Gateway_User_data(LORA_NET *netp, uint8_t *buffer, uint8_t len);  //fix in 2018 07 13
+int lora_net_Gateway_User_data_r(LORA_NET *netp, uint8_t *buffer);  //fix in 2018 07 13
 int lora_net_Gateway_Network_request(LORA_NET *netp, tTableMsg *msg, uint8_t *gmac);
 
 //node

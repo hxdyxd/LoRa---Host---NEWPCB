@@ -101,7 +101,7 @@ tLoRaSettings LoRaSettings =
     true,             // CrcOn [0: OFF, 1: ON]
     false,            // ImplicitHeaderOn [0: OFF, 1: ON]
     0,                // RxSingleOn [0: Continuous, 1 Single]
-    0,                // FreqHopOn [0: OFF, 1: ON]
+    true,             // FreqHopOn [0: OFF, 1: ON]
     4,                // HopPeriod Hops every frequency hopping period symbols
     1000,              // TxPacketTimeout
     2000,              // RxPacketTimeout

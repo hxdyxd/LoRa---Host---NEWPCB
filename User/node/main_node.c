@@ -25,13 +25,24 @@
 */
 LORA_NET lora[LORA_MODEL_NUM];
 uint8_t node_stats = NODE_STATUS_OFFLINE;
-tTableMsg privateMsg, publicMsg;
+tTableMsg privateMsg = {
+	.HoppingFrequencieSeed = 1,
+	.SpreadingFactor = 10,        // 7 SpreadingFactor [6: 64, 7: 128, 8: 256, 9: 512, 10: 1024, 11: 2048, 12: 4096  chips]
+	.SignalBw = 9,               // 9 SignalBw [0: 7.8kHz, 1: 10.4 kHz, 2: 15.6 kHz, 3: 20.8 kHz, 4: 31.2 kHz,
+										// 5: 41.6 kHz, 6: 62.5 kHz, 7: 125 kHz, 8: 250 kHz, 9: 500 kHz, other: Reserved]
+	.ErrorCoding = 4,            // ErrorCoding [1: 4/5, 2: 4/6, 3: 4/7, 4: 4/8]
+};
+tTableMsg publicMsg = {
+	.HoppingFrequencieSeed = 0,
+	.SpreadingFactor = 10,        // 7 SpreadingFactor [6: 64, 7: 128, 8: 256, 9: 512, 10: 1024, 11: 2048, 12: 4096  chips]
+	.SignalBw = 9,               // 9 SignalBw [0: 7.8kHz, 1: 10.4 kHz, 2: 15.6 kHz, 3: 20.8 kHz, 4: 31.2 kHz,
+										// 5: 41.6 kHz, 6: 62.5 kHz, 7: 125 kHz, 8: 250 kHz, 9: 500 kHz, other: Reserved]
+	.ErrorCoding = 4,            // ErrorCoding [1: 4/5, 2: 4/6, 3: 4/7, 4: 4/8]
+};
 
 /*
 * timer
 */
-uint64_t Timer1 = 0;
-uint64_t Timer2 = 0;
 uint64_t timeout = 0;  //online -> offline
 
 /*
@@ -45,7 +56,7 @@ tConfig temp_config;
 * write
 */
 uint8_t gs_write_buf[256];
-uint8_t gs_usart_write_buf[256];
+uint8_t gs_usart_write_buf[1024];
 uint8_t gs_write_len = 0;
 uint8_t NODE_BUST_FLAG = DEVICE_NO_BUSY;   //1: no busy
 
@@ -62,8 +73,83 @@ void usart_rx_callback(void)
 	uint8_t *usart_buffer = usart_rx_get_buffer_ptr();
 	switch( usart_buffer[0] )
 	{
+	case USART_API_READ_PARAMETER1:
+		/* CMD(1) + FHKEY(4) + SF(0.4) + SB(0.4) + EC(0.5) */
+		gs_usart_write_buf[0] = USART_API_READ_PARAMETER1 | 0x80;
+		
+		gs_usart_write_buf[1] = publicMsg.HoppingFrequencieSeed >> 24;
+		gs_usart_write_buf[2] = publicMsg.HoppingFrequencieSeed >> 16;
+		gs_usart_write_buf[3] = publicMsg.HoppingFrequencieSeed >> 8;
+		gs_usart_write_buf[4] = publicMsg.HoppingFrequencieSeed;
+		
+		gs_usart_write_buf[5] = (publicMsg.SpreadingFactor << 4) | publicMsg.SignalBw;
+		gs_usart_write_buf[6] = (publicMsg.ErrorCoding << 5);
+	
+		stm32_dma_usart2_write(gs_usart_write_buf, 7 );
+		usart_rx_release();
+		
+		APP_DEBUG("usart read parameter1 : \r\n");
+		APP_DEBUG(" Seed = %d \r\n", publicMsg.HoppingFrequencieSeed );
+		APP_DEBUG(" Bw = %d \r\n", publicMsg.SignalBw );
+		APP_DEBUG(" Sf = %d \r\n", publicMsg.SpreadingFactor );
+		APP_DEBUG(" Ec = %d \r\n", publicMsg.ErrorCoding );
+		break;
+	
+	case USART_API_READ_PARAMETER2:
+		/* CMD(1) + SF(0.4) + SB(0.4) + EC(0.5) */
+		gs_usart_write_buf[0] = USART_API_READ_PARAMETER2 | 0x80;
+		
+		if(node_stats == NODE_STATUS_ONLINE) {
+			gs_usart_write_buf[1] = (privateMsg.SpreadingFactor << 4) | privateMsg.SignalBw;
+			gs_usart_write_buf[2] = (privateMsg.ErrorCoding << 5);
+		} else {
+			gs_usart_write_buf[1] = gs_usart_write_buf[2] = 0;
+		}
+	
+		stm32_dma_usart2_write(gs_usart_write_buf, 3 );
+		usart_rx_release();
+		
+		APP_DEBUG("usart read parameter2 : \r\n");
+		APP_DEBUG(" Bw = %d \r\n", privateMsg.SignalBw );
+		APP_DEBUG(" Sf = %d \r\n", privateMsg.SpreadingFactor );
+		APP_DEBUG(" Ec = %d \r\n", privateMsg.ErrorCoding );
+		break;
+		
+	case USART_API_READ_MAX_NODE_NUM:
+		/* CMD(1) + NUMBER(1) */
+		gs_usart_write_buf[0] = USART_API_READ_MAX_NODE_NUM | 0x80;
+		
+		gs_usart_write_buf[1] = LORA_MAX_NODE_NUM;
+	
+		stm32_dma_usart2_write(gs_usart_write_buf, 2 );
+		usart_rx_release();
+		
+		APP_DEBUG("usart read max node number = %d\r\n", LORA_MAX_NODE_NUM);
+		break;
+	
+	case USART_API_READ_TIME:
+		/* CMD(1) + RANDOM LOW(2) + RANDOM HIGH(2) + TIMEOUT(2) + ONLINE TIMEOUT(2) */
+		gs_usart_write_buf[0] = USART_API_READ_TIME | 0x80;
+		
+		gs_usart_write_buf[1] = 0;
+		gs_usart_write_buf[2] = 0;
+		gs_usart_write_buf[3] = 0;
+		gs_usart_write_buf[4] = 0;
+	
+		gs_usart_write_buf[5] = 0;
+		gs_usart_write_buf[6] = 0;
+	
+		gs_usart_write_buf[7] = 0;
+		gs_usart_write_buf[8] = 0;
+	
+		stm32_dma_usart2_write(gs_usart_write_buf, 9 );
+		usart_rx_release();
+	
+		APP_DEBUG("usart read time %d-%d , %d , %d\r\n", 0, 0, 0, 0);
+		break;
+		
 	case USART_API_READ_STATUS:
-		/* CMD(1) + NMAC（12） + STATUS(1) ... */
+		/* CMD(1) + NMAC(12) + GMAC(12) + STATUS(1) + DIFF LAT(2) ... */
 		gs_usart_write_buf[0] = USART_API_READ_STATUS | 0x80;
 	
 		memcpy( usartStatus.nmac, nmac, 12);
@@ -77,7 +163,6 @@ void usart_rx_callback(void)
 		memcpy( gs_usart_write_buf + 1, usartStatus.nmac, sizeof(struct sNodeUsartStatus) );
 		//TX
 		stm32_dma_usart2_write(gs_usart_write_buf,  sizeof(struct sNodeUsartStatus) + 1);
-		
 		usart_rx_release();
 		
 		APP_DEBUG("usart read status, status = %d\r\n", node_stats);
@@ -89,7 +174,6 @@ void usart_rx_callback(void)
 		gs_usart_write_buf[1] = NODE_BUST_FLAG;
 		//TX
 		stm32_dma_usart2_write(gs_usart_write_buf,  2);
-		
 		usart_rx_release();
 	
 		APP_DEBUG("usart busy = %d\r\n", NODE_BUST_FLAG);
@@ -200,12 +284,12 @@ void lora_message_callback(struct sLORA_NET *netp)
 	switch(node_stats)
 	{
 	case NODE_STATUS_ONLINE:
-		len = lora_net_User_data_r(netp, gs_usart_write_buf + 24 + 1);
+		len = lora_net_User_data_r(netp, gs_usart_write_buf + 25);
 		
 		if(len >= 0) {
 			if(len > 0) {
 				APP_DEBUG("Gateway user data = ");
-				lora_net_debug_hex( gs_usart_write_buf + 24 + 1, len, 1);
+				lora_net_debug_hex( gs_usart_write_buf + 25, len, 1);
 				
 				/* 用户数据格式  */
 				/* CMD(1) + 源地址（12） + 本机地址（12） + 数据（n） */
@@ -213,7 +297,7 @@ void lora_message_callback(struct sLORA_NET *netp)
 				memcpy( &gs_usart_write_buf[1], flash_config->gmac, 12);
 				memcpy( &gs_usart_write_buf[13], nmac, 12);
 				//TX
-				stm32_dma_usart2_write(gs_usart_write_buf,  len + 24 + 1);
+				stm32_dma_usart2_write(gs_usart_write_buf,  len + 25);
 				
 			} else {
 				APP_DEBUG("Gateway is live \r\n");
@@ -319,12 +403,6 @@ int main(void)
 	APP_DEBUG("NODE MODULE , NMAC = ");
 	lora_net_debug_hex(nmac, 12, 1);
 	
-	publicMsg.HoppingFrequencieSeed = 0;
-	publicMsg.SpreadingFactor = 10;        // 7 SpreadingFactor [6: 64, 7: 128, 8: 256, 9: 512, 10: 1024, 11: 2048, 12: 4096  chips]
-	publicMsg.SignalBw = 9;               // 9 SignalBw [0: 7.8kHz, 1: 10.4 kHz, 2: 15.6 kHz, 3: 20.8 kHz, 4: 31.2 kHz,
-										// 5: 41.6 kHz, 6: 62.5 kHz, 7: 125 kHz, 8: 250 kHz, 9: 500 kHz, other: Reserved]
-	publicMsg.ErrorCoding = 4;            // ErrorCoding [1: 4/5, 2: 4/6, 3: 4/7, 4: 4/8]
-	
 	for(i=0;i<LORA_MODEL_NUM;i++) {
 		/* Fill Default Value */
 		SX1276LoRaDeinit( &lora[i].loraConfigure );
@@ -339,21 +417,10 @@ int main(void)
 			lora[i].loraConfigure.LoraLowLevelFunc.SX1276WriteBuffer = SX1276WriteBuffer;
 			lora[i].loraConfigure.LoraLowLevelFunc.read_single_reg = read_single_reg;
 			
-			lora[i].loraConfigure.LoRaSettings.RFFrequency = 430000000;    // RFFrequency
-			lora[i].loraConfigure.LoRaSettings.SpreadingFactor = 10;        // 7 SpreadingFactor [6: 64, 7: 128, 8: 256, 9: 512, 10: 1024, 11: 2048, 12: 4096  chips]
-			lora[i].loraConfigure.LoRaSettings.SignalBw = 9;               // 9 SignalBw [0: 7.8kHz, 1: 10.4 kHz, 2: 15.6 kHz, 3: 20.8 kHz, 4: 31.2 kHz,
-												// 5: 41.6 kHz, 6: 62.5 kHz, 7: 125 kHz, 8: 250 kHz, 9: 500 kHz, other: Reserved]
-			lora[i].loraConfigure.LoRaSettings.ErrorCoding = 4;            // ErrorCoding [1: 4/5, 2: 4/6, 3: 4/7, 4: 4/8]
-		
-			lora[i].loraConfigure.random_getRandomFreq = random_getRandomFreq;
-			lora[i].loraConfigure.LoRaSettings.FreqHopOn = true;
 			
+			lora[i].loraConfigure.random_getRandomFreq = random_getRandomFreq;
 			lora[i].lora_net_rx_callback = lora_message_callback;
 		}
-		
-		lora[i].loraConfigure.LoRaSettings.TxPacketTimeout = 1000;
-		lora[i].loraConfigure.LoRaSettings.RxPacketTimeout = 1000;
-		
 		
 		lora_net_init(&lora[i]);
 	}

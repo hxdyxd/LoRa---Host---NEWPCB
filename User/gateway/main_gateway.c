@@ -12,6 +12,7 @@
 #include "app_debug.h"
 #include "interface_usart.h"
 #include "usart_rx.h"
+#include "stm32_dma.h"
 #include "soft_timer.h"
 
 #define LORA_MODEL_NUM (2)
@@ -30,6 +31,20 @@ uint8_t *gmac = (uint8_t *)0x1FFFF7E8;
  *  model message
 */
 LORA_NET lora[LORA_MODEL_NUM ];
+tTableMsg privateMsg = {
+	.HoppingFrequencieSeed = 1,  //RANDOM
+	.SpreadingFactor = 9,        // 7 SpreadingFactor [6: 64, 7: 128, 8: 256, 9: 512, 10: 1024, 11: 2048, 12: 4096  chips]
+	.SignalBw = 8,               // 9 SignalBw [0: 7.8kHz, 1: 10.4 kHz, 2: 15.6 kHz, 3: 20.8 kHz, 4: 31.2 kHz,
+										// 5: 41.6 kHz, 6: 62.5 kHz, 7: 125 kHz, 8: 250 kHz, 9: 500 kHz, other: Reserved]
+	.ErrorCoding = 3,            // ErrorCoding [1: 4/5, 2: 4/6, 3: 4/7, 4: 4/8]
+};						
+tTableMsg publicMsg = {
+	.HoppingFrequencieSeed = 0,
+	.SpreadingFactor = 10,        // 7 SpreadingFactor [6: 64, 7: 128, 8: 256, 9: 512, 10: 1024, 11: 2048, 12: 4096  chips]
+	.SignalBw = 9,               // 9 SignalBw [0: 7.8kHz, 1: 10.4 kHz, 2: 15.6 kHz, 3: 20.8 kHz, 4: 31.2 kHz,
+										// 5: 41.6 kHz, 6: 62.5 kHz, 7: 125 kHz, 8: 250 kHz, 9: 500 kHz, other: Reserved]
+	.ErrorCoding = 4,            // ErrorCoding [1: 4/5, 2: 4/6, 3: 4/7, 4: 4/8]
+};						
 
 /*
  *  node message
@@ -54,6 +69,7 @@ uint64_t Timer2 = 0;
 * write
 */
 uint8_t gs_write_buf[256];
+uint8_t gs_usart_write_buf[1024];
 uint8_t gs_write_len = 0;
 uint8_t GATEWAY_BUST_FLAG = 1;   //1: no busy
 
@@ -63,16 +79,15 @@ void TableMsgDeinit(void)
 	for(i=0;i<LORA_MAX_NODE_NUM;i++) {
 		TableMsg[i].online = 0;
 		TableMsg[i].HoppingFrequencieSeed = random_get_value();    // RFFrequency
-		TableMsg[i].SpreadingFactor = 9;        // 7 SpreadingFactor [6: 64, 7: 128, 8: 256, 9: 512, 10: 1024, 11: 2048, 12: 4096  chips]
-		TableMsg[i].SignalBw = 8;               // 9 SignalBw [0: 7.8kHz, 1: 10.4 kHz, 2: 15.6 kHz, 3: 20.8 kHz, 4: 31.2 kHz,
-												// 5: 41.6 kHz, 6: 62.5 kHz, 7: 125 kHz, 8: 250 kHz, 9: 500 kHz, other: Reserved]
-		TableMsg[i].ErrorCoding = 3;            // ErrorCoding [1: 4/5, 2: 4/6, 3: 4/7, 4: 4/8]
+		TableMsg[i].SpreadingFactor = privateMsg.SpreadingFactor;  // 7 SpreadingFactor [6: 64, 7: 128, 8: 256, 9: 512, 10: 1024, 11: 2048, 12: 4096  chips]
+		TableMsg[i].SignalBw = privateMsg.SignalBw;                // 9 SignalBw [0: 7.8kHz, 1: 10.4 kHz, 2: 15.6 kHz, 3: 20.8 kHz, 4: 31.2 kHz,
+												                      // 5: 41.6 kHz, 6: 62.5 kHz, 7: 125 kHz, 8: 250 kHz, 9: 500 kHz, other: Reserved]
+		TableMsg[i].ErrorCoding = privateMsg.ErrorCoding;          // ErrorCoding [1: 4/5, 2: 4/6, 3: 4/7, 4: 4/8]
 		TableMsg[i].RxPacketRssiValue = 0;
 		TableMsg[i].RxPacketSnrValue = 0;
 		memset(TableMsg[i].nmac, 0, 12);            //macaddr
 	}
 }
-
 
 
 void checkOnline(void)
@@ -121,13 +136,15 @@ void lora_put_data_callback(void)
 	nextOnlineCurrentUserId();
 	
 	if ( GATEWAY_BUST_FLAG == DEVICE_NO_BUSY ) {
-		lora_net_Gateway_User_data(&lora[0], gs_write_buf, 0, &TableMsg[current_use_user_id]);
+		lora_net_Set_Config(&lora[0],  &TableMsg[current_use_user_id]);
+		lora_net_Gateway_User_data(&lora[0], gs_write_buf, 0);
 	} else {
 		int i;
 		
 		for(i=0;i<LORA_MAX_NODE_NUM;i++) {
 			if( memcmp(gs_write_buf, TableMsg[i].nmac, 12 ) == 0 && TableMsg[i].online ) {
-				lora_net_Gateway_User_data(&lora[0], gs_write_buf + 12, gs_write_len - 12, &TableMsg[i]);
+				lora_net_Set_Config(&lora[0],  &TableMsg[i]);
+				lora_net_Gateway_User_data(&lora[0], gs_write_buf + 12, gs_write_len - 12);
 				
 				APP_DEBUG("send to %d node [%d] = ", i, gs_write_len - 12);
 				lora_net_debug_hex(gs_write_buf + 12, gs_write_len - 12, 1);
@@ -154,6 +171,77 @@ void usart_rx_callback(void)
 	uint8_t *usart_buffer = usart_rx_get_buffer_ptr();
 	switch( usart_buffer[0] )
 	{
+		case USART_API_READ_PARAMETER1:
+		/* CMD(1) + FHKEY(4) + SF(0.4) + SB(0.4) + EC(0.5) */
+		gs_usart_write_buf[0] = USART_API_READ_PARAMETER1 | 0x80;
+		
+		gs_usart_write_buf[1] = publicMsg.HoppingFrequencieSeed >> 24;
+		gs_usart_write_buf[2] = publicMsg.HoppingFrequencieSeed >> 16;
+		gs_usart_write_buf[3] = publicMsg.HoppingFrequencieSeed >> 8;
+		gs_usart_write_buf[4] = publicMsg.HoppingFrequencieSeed;
+		
+		gs_usart_write_buf[5] = (publicMsg.SpreadingFactor << 4) | publicMsg.SignalBw;
+		gs_usart_write_buf[6] = (publicMsg.ErrorCoding << 5);
+	
+		stm32_dma_usart2_write(gs_usart_write_buf, 7 );
+		usart_rx_release();
+		
+		APP_DEBUG("usart read parameter1 : \r\n");
+		APP_DEBUG(" Seed = %d \r\n", publicMsg.HoppingFrequencieSeed );
+		APP_DEBUG(" Bw = %d \r\n", publicMsg.SignalBw );
+		APP_DEBUG(" Sf = %d \r\n", publicMsg.SpreadingFactor );
+		APP_DEBUG(" Ec = %d \r\n", publicMsg.ErrorCoding );
+		break;
+	
+	case USART_API_READ_PARAMETER2:
+		/* CMD(1) + SF(0.4) + SB(0.4) + EC(0.5) */
+		gs_usart_write_buf[0] = USART_API_READ_PARAMETER2 | 0x80;
+		
+		gs_usart_write_buf[1] = (privateMsg.SpreadingFactor << 4) | privateMsg.SignalBw;
+		gs_usart_write_buf[2] = (privateMsg.ErrorCoding << 5);
+	
+		stm32_dma_usart2_write(gs_usart_write_buf, 3 );
+		usart_rx_release();
+		
+		APP_DEBUG("usart read parameter2 : \r\n");
+		APP_DEBUG(" Bw = %d \r\n", privateMsg.SignalBw );
+		APP_DEBUG(" Sf = %d \r\n", privateMsg.SpreadingFactor );
+		APP_DEBUG(" Ec = %d \r\n", privateMsg.ErrorCoding );
+		break;
+		
+	case USART_API_READ_MAX_NODE_NUM:
+		/* CMD(1) + NUMBER(1) */
+		gs_usart_write_buf[0] = USART_API_READ_MAX_NODE_NUM | 0x80;
+		
+		gs_usart_write_buf[1] = LORA_MAX_NODE_NUM;
+	
+		stm32_dma_usart2_write(gs_usart_write_buf, 2 );
+		usart_rx_release();
+		
+		APP_DEBUG("usart read max node number = %d\r\n", LORA_MAX_NODE_NUM);
+		break;
+	
+	case USART_API_READ_TIME:
+		/* CMD(1) + RANDOM LOW(2) + RANDOM HIGH(2) + TIMEOUT(2) + ONLINE TIMEOUT(2) */
+		gs_usart_write_buf[0] = USART_API_READ_TIME | 0x80;
+		
+		gs_usart_write_buf[1] = 0;
+		gs_usart_write_buf[2] = 0;
+		gs_usart_write_buf[3] = 0;
+		gs_usart_write_buf[4] = 0;
+	
+		gs_usart_write_buf[5] = 0;
+		gs_usart_write_buf[6] = 0;
+	
+		gs_usart_write_buf[7] = 0;
+		gs_usart_write_buf[8] = 0;
+	
+		stm32_dma_usart2_write(gs_usart_write_buf, 9 );
+		usart_rx_release();
+	
+		APP_DEBUG("usart read time %d-%d , %d , %d\r\n", 0, 0, 0, 0);
+		break;	
+		
 	case USART_API_READ_STATUS:
 		/* CMD(1) + [ NMAC（12） + FHKEY(4) + Rssi(2) + SNR(1) ] + [ ... ] ... */
 		cmd = USART_API_READ_STATUS | 0x80;
@@ -232,38 +320,41 @@ void private_write_timeout_callback(void)
 
 void private_message_callback(struct sLORA_NET *netp)
 {
-	int len = netp->pack.size;
+	int len = 0;
 	
-	TableMsg[current_use_user_id].LastActive = TickCounter;
-	TableMsg[current_use_user_id].RxPacketSnrValue = SX1276LoRaGetPacketSnr( &netp->loraConfigure );
-	TableMsg[current_use_user_id].RxPacketRssiValue = SX1276LoRaGetPacketRssi( &netp->loraConfigure );
+	len = lora_net_Gateway_User_data_r(netp, gs_usart_write_buf + 25);
 	
-	if(len > 1) {
-		/* 用户数据格式  */
-		/* CMD(1) + 源地址（12） + 本机地址（12） + 数据（n） */
-		uint8_t cmd = USART_API_SEND_USER_DATA | 0x80;
+	if(len >= 0) {
 		
-		interface_usart_write_wait();
-		interface_usart_write( &cmd, 1);
-		interface_usart_write(TableMsg[current_use_user_id].nmac , 12);
-		interface_usart_write(gmac , 12);
-		interface_usart_write(netp->pack.Data, len - 1);
-		APP_DEBUG("Node %d data = ", current_use_user_id);
-		lora_net_debug_hex(netp->pack.Data, len - 1, 1);
-	} else {
-		APP_DEBUG("Node %d is Live \r\n", current_use_user_id);
+		TableMsg[current_use_user_id].LastActive = TickCounter;
+		TableMsg[current_use_user_id].RxPacketSnrValue = SX1276LoRaGetPacketSnr( &netp->loraConfigure );
+		TableMsg[current_use_user_id].RxPacketRssiValue = SX1276LoRaGetPacketRssi( &netp->loraConfigure );
+		
+		if(len > 0) {
+			/* 用户数据格式  */
+			/* CMD(1) + 源地址（12） + 本机地址（12） + 数据（n） */
+			gs_usart_write_buf[0] = USART_API_SEND_USER_DATA | 0x80;
+			memcpy(gs_usart_write_buf + 1, TableMsg[current_use_user_id].nmac , 12);
+			memcpy(gs_usart_write_buf + 13, gmac , 12);
+			stm32_dma_usart2_write(gs_usart_write_buf, len + 25);
+			
+			APP_DEBUG("Node %d data = ", current_use_user_id);
+			lora_net_debug_hex(netp->pack.Data, len - 1, 1);
+		} else {
+			APP_DEBUG("Node %d is Live \r\n", current_use_user_id);
+		}
+		
+		//APP_DEBUG("time = %d ms Rssi: %g Snr = %d dB\033[0m\r\n",(int)(TickCounter - RXtimer), TableMsg[current_use_user_id].RxPacketRssiValue, TableMsg[current_use_user_id].RxPacketSnrValue);
+		
+		lora_put_data_callback();
+		soft_timer_create(GATEWAY_TIMER_PRIVATE_MSG_TIMEOUT, 1, 1, private_write_timeout_callback, PACK_TIMEOUT);
+		RXtimer = TickCounter;
+		
+	#ifdef PCB_V2
+		led_rev(0);  //red
+	#endif
 	}
 
-
-	//APP_DEBUG("time = %d ms Rssi: %g Snr = %d dB\033[0m\r\n",(int)(TickCounter - RXtimer), TableMsg[current_use_user_id].RxPacketRssiValue, TableMsg[current_use_user_id].RxPacketSnrValue);
-	
-	lora_put_data_callback();
-	soft_timer_create(GATEWAY_TIMER_PRIVATE_MSG_TIMEOUT, 1, 1, private_write_timeout_callback, PACK_TIMEOUT);
-	RXtimer = TickCounter;
-	
-#ifdef PCB_V2
-	led_rev(0);  //red
-#endif
 }
 
 
@@ -375,7 +466,7 @@ int main(void)
 	
     interface_usart_init();
 	usart_rx_isr_init();
-	//stm32_dma_init();
+	stm32_dma_init();
 	random_adc_config();
 	APP_DEBUG("USART1_Config\r\n");
 	APP_DEBUG("Build , %s %s \r\n", __DATE__, __TIME__);
@@ -399,18 +490,10 @@ int main(void)
 			lora[i].loraConfigure.LoraLowLevelFunc.SX1276WriteBuffer = SX1276WriteBuffer;
 			lora[i].loraConfigure.LoraLowLevelFunc.read_single_reg = read_single_reg;
 			
-			lora[i].loraConfigure.LoRaSettings.SignalBw = TableMsg[1].SignalBw;
-			lora[i].loraConfigure.LoRaSettings.ErrorCoding = TableMsg[1].ErrorCoding;
-			lora[i].loraConfigure.LoRaSettings.SpreadingFactor = TableMsg[1].SpreadingFactor;
-			
-			//memcpy(lora[i].loraConfigure.HoppingFrequencies, PublicHoppingFrequencies, sizeof(PublicHoppingFrequencies));
-			lora[i].loraConfigure.HoppingFrequencieSeed = 0;
 			lora[i].loraConfigure.random_getRandomFreq = random_getRandomFreq;
-			lora[i].loraConfigure.LoRaSettings.FreqHopOn = true;
-			
 			lora[i].lora_net_rx_callback = private_message_callback;
 			
-		} else if(i == 1) {
+		} else {
 			
 			lora[i].loraConfigure.LoraLowLevelFunc.SX1276InitIo = SX1276InitIo2;
 			lora[i].loraConfigure.LoraLowLevelFunc.SX1276Read = SX1276Read2;
@@ -419,28 +502,15 @@ int main(void)
 			lora[i].loraConfigure.LoraLowLevelFunc.SX1276WriteBuffer = SX1276WriteBuffer2;
 			lora[i].loraConfigure.LoraLowLevelFunc.read_single_reg = read_single_reg2;
 			
-			
-			lora[i].loraConfigure.LoRaSettings.RFFrequency = 430000000;    // RFFrequency
-			lora[i].loraConfigure.LoRaSettings.SpreadingFactor = 10;        // 7 SpreadingFactor [6: 64, 7: 128, 8: 256, 9: 512, 10: 1024, 11: 2048, 12: 4096  chips]
-			lora[i].loraConfigure.LoRaSettings.SignalBw = 9;               // 9 SignalBw [0: 7.8kHz, 1: 10.4 kHz, 2: 15.6 kHz, 3: 20.8 kHz, 4: 31.2 kHz,
-												// 5: 41.6 kHz, 6: 62.5 kHz, 7: 125 kHz, 8: 250 kHz, 9: 500 kHz, other: Reserved]
-			lora[i].loraConfigure.LoRaSettings.ErrorCoding = 4;            // ErrorCoding [1: 4/5, 2: 4/6, 3: 4/7, 4: 4/8]
-			
-			
-			lora[i].loraConfigure.HoppingFrequencieSeed = 0;
 			lora[i].loraConfigure.random_getRandomFreq = random_getRandomFreq;
-			lora[i].loraConfigure.LoRaSettings.FreqHopOn = true;
-			
 			lora[i].lora_net_rx_callback = public_message_callback;
 		}
 		
-
-
-		lora[i].loraConfigure.LoRaSettings.TxPacketTimeout = 1000;
-		lora[i].loraConfigure.LoRaSettings.RxPacketTimeout = 1000;
-		
 		lora_net_init(&lora[i]);
 	}
+	
+	lora_net_Set_Config(&lora[0],  &privateMsg);
+	lora_net_Set_Config(&lora[1],  &publicMsg);
 	
 	//定时器配置
 	soft_timer_init();

@@ -95,17 +95,8 @@ void lora_net_debug_hex(uint8_t *p, uint8_t len, uint8_t lf)
 	}
 }
 
-void lora_net_Gateway_User_data(LORA_NET *netp, uint8_t *buffer, uint8_t len, tTableMsg *msg)
+void lora_net_Gateway_User_data(LORA_NET *netp, uint8_t *buffer, uint8_t len)
 {
-	netp->loraConfigure.HoppingFrequencieSeed = msg->HoppingFrequencieSeed;
-	netp->loraConfigure.LoRaSettings.SignalBw = msg->SignalBw;
-	netp->loraConfigure.LoRaSettings.SpreadingFactor = msg->SpreadingFactor;
-	netp->loraConfigure.LoRaSettings.ErrorCoding = msg->ErrorCoding;
-	
-	SX1276LoRaSetSpreadingFactor( &netp->loraConfigure, netp->loraConfigure.LoRaSettings.SpreadingFactor ); // SF6 only operates in implicit header mode.
-	SX1276LoRaSetErrorCoding( &netp->loraConfigure, netp->loraConfigure.LoRaSettings.ErrorCoding );
-	SX1276LoRaSetSignalBandwidth( &netp->loraConfigure, netp->loraConfigure.LoRaSettings.SignalBw );
-	
 	netp->pack.Flag_version = FLAG_VER;
 	netp->pack.Flag_type = FLAG_TYPE_USER_DATA;
 	netp->pack.Flag_direction = FLAG_DIR_DOWN;
@@ -114,11 +105,32 @@ void lora_net_Gateway_User_data(LORA_NET *netp, uint8_t *buffer, uint8_t len, tT
 	lora_net_write_no_block(netp, (uint8_t *)&netp->pack, len + 1);
 }
 
+int lora_net_Gateway_User_data_r(LORA_NET *netp, uint8_t *buffer)
+{
+	int n = netp->pack.size;
+	
+	if(n < 1) {
+		return -1;
+	}
+	
+	if(netp->pack.Flag_version == FLAG_VER && netp->pack.Flag_type == FLAG_TYPE_USER_DATA && netp->pack.Flag_direction == FLAG_DIR_UP) {
+		memcpy(buffer, netp->pack.Data, n - 1);
+		return (n - 1);
+	} else {
+		APP_WARN("[Private] Flag_version = %d, Flag_type = %d, Flag_direction = %d, len = %d \r\n", netp->pack.Flag_version, netp->pack.Flag_type, netp->pack.Flag_direction, n);
+		return -1;
+	}
+}
+
 
 int lora_net_Gateway_Network_request(LORA_NET *netp, tTableMsg *msg, uint8_t *gmac)
 {
 	int n = netp->pack.size;
 	uint32_t timer = TickCounter;
+	
+	if(n < 1) {
+		return 0;
+	}
 	
 	if(netp->pack.Flag_version == FLAG_VER && netp->pack.Flag_direction == FLAG_DIR_UP && netp->pack.Flag_type == FLAG_TYPE_NETWORK_REQUEST && n == 25) {
 		if(memcmp( gmac, netp->pack.Data + 12, 12) == 0) { /* give me */
