@@ -39,6 +39,9 @@
 #define GATEWAY_TIMER_LEDS                    (1)
 #define GATEWAY_TIMER_PRIVATE_MSG_TIMEOUT     (2)
 
+#define NODE_TIMER_LEDS                       (0)
+#define NODE_TIMER_RANDOM_MSG_TIMEOUT         (1)
+
 
 /* global typedef */
 

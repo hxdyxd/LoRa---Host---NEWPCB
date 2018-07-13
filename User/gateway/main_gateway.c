@@ -57,7 +57,7 @@ uint8_t gs_write_buf[256];
 uint8_t gs_write_len = 0;
 uint8_t GATEWAY_BUST_FLAG = 1;   //1: no busy
 
-void TableMsgDeinit()
+void TableMsgDeinit(void)
 {
 	int i;
 	for(i=0;i<LORA_MAX_NODE_NUM;i++) {
@@ -75,7 +75,7 @@ void TableMsgDeinit()
 
 
 
-void checkOnline()
+void checkOnline(void)
 {
 	int i;
 	for(i=0;i<LORA_MAX_NODE_NUM;i++) {
@@ -89,7 +89,7 @@ void checkOnline()
 	}
 }
 
-void nextOnlineCurrentUserId()
+void nextOnlineCurrentUserId(void)
 {
 	int i = 0;
 	checkOnline();
@@ -219,7 +219,7 @@ void usart_rx_callback(void)
 	}
 }
 
-void private_write_timeout_callback()
+void private_write_timeout_callback(void)
 {
 	if( gs_online_num ) {
 		APP_WARN("Node %d Timeout use %d\r\n", current_use_user_id, TableMsg[current_use_user_id].HoppingFrequencieSeed);
@@ -316,7 +316,7 @@ void public_message_callback(struct sLORA_NET *netp)
 	/* end */
 }
 
-void led_status_callback()
+void led_status_callback(void)
 {
 	static int led_status = 0;
 	static int i;
@@ -354,7 +354,7 @@ void led_status_callback()
 }
 
 
-void online_num_tips_callback()
+void online_num_tips_callback(void)
 {
 	APP_DEBUG("ONLINE NUM \t = \t %d \r\n", gs_online_num);
 }

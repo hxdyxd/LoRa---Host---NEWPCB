@@ -15,15 +15,15 @@
 #include "interface_usart.h"
 #include "usart_rx.h"
 #include "stm32_dma.h"
+#include "soft_timer.h"
 
-
-#define LORA_MODE_NUM (1)
+#define LORA_MODEL_NUM (1)
 
 
 /*
  *  model message
 */
-LORA_NET lora[LORA_MODE_NUM + 1];
+LORA_NET lora[LORA_MODEL_NUM];
 uint8_t node_stats = NODE_STATUS_OFFLINE;
 tTableMsg privateMsg, publicMsg;
 
@@ -39,6 +39,7 @@ uint64_t timeout = 0;  //online -> offline
 */
 uint8_t *nmac = (uint8_t *)0x1FFFF7E8;
 tConfig *flash_config = (tConfig *)FLASH_Start_Addr;
+tConfig temp_config;
 
 /*
 * write
@@ -49,20 +50,12 @@ uint8_t gs_write_len = 0;
 uint8_t NODE_BUST_FLAG = DEVICE_NO_BUSY;   //1: no busy
 
 
-void Delay_ms(__IO uint32_t i)
-{
-	uint64_t time = TickCounter;
-	
-	printf("Delay_ms = %d\r\n", i);
-	
-	while( (TickCounter - time) < i);
-}
 
+void random_message_timeout_callback(void);
 
 
 void usart_rx_callback(void)
 {
-	uint8_t cmd = 0;
 	struct sNodeUsartStatus usartStatus;
 	uint8_t len;
 	
@@ -120,15 +113,189 @@ void usart_rx_callback(void)
 	}
 }
 
+
+void led_status_callback(void)
+{
+	//200ms callback
+#ifdef PCB_V2
+	if(node_stats == NODE_STATUS_OFFLINE) {
+		//offline
+		led_on(0);  //red on
+		led_off(1);  //blue off
+	} else if(node_stats == NODE_STATUS_ONLINE) {
+		//online
+		led_on(1);
+	} else {
+		led_on(0);  //red on
+		led_rev(1);
+	}
+#endif
+	
+	if(node_stats != NODE_STATUS_NOBINDED &&
+#ifdef PCB_V2
+	key_read(0) == Bit_RESET
+#else
+	key_read(1) == Bit_RESET
+#endif
+	) {
+		//press
+		//clear config
+		temp_config.isconfig = 0x00000000;
+		xfs_sava_cfg( (uint8_t *)&temp_config, sizeof(tConfig) );
+		node_stats = NODE_STATUS_NOBINDED;
+		
+		//delay random time
+		soft_timer_create(NODE_TIMER_RANDOM_MSG_TIMEOUT, 1, 1, random_message_timeout_callback, random_getRandomTime(random_get_value()) );
+	}
+}
+
+
+void random_message_timeout_callback(void)
+{
+	switch(node_stats)
+	{
+	case NODE_STATUS_ONLINE:
+		//offline timeout
+	
+		APP_WARN("[offline] node lost \r\n");
+		node_stats = NODE_STATUS_OFFLINE;
+	
+		//use publicMsg
+		lora_net_Set_Config(&lora[0],  &publicMsg);
+	
+		//delay random time
+		soft_timer_create(NODE_TIMER_RANDOM_MSG_TIMEOUT, 1, 1, random_message_timeout_callback, random_getRandomTime(random_get_value()) );
+		break;
+	case NODE_STATUS_OFFLINE:
+		//join Network request
+	
+		lora_net_Set_Config(&lora[0],  &publicMsg);
+		lora_net_Network_request(&lora[0], nmac, flash_config->gmac);
+		APP_DEBUG("[Send] join Network request\r\n");
+		
+		//refresh timer, delay random time
+		soft_timer_create(NODE_TIMER_RANDOM_MSG_TIMEOUT, 1, 1, random_message_timeout_callback, random_getRandomTime(random_get_value()) );
+		break;
+	case NODE_STATUS_NOBINDED:
+		/* 获取自身ID */
+		
+		lora_net_Set_Config(&lora[0],  &publicMsg);
+		lora_net_Base_station_binding(&lora[0], nmac);
+		APP_DEBUG("[Send] Base station bindin request\r\n");
+		
+		//refresh timer, delay random time
+		soft_timer_create(NODE_TIMER_RANDOM_MSG_TIMEOUT, 1, 1, random_message_timeout_callback, random_getRandomTime(random_get_value()) );
+		break;
+	default:
+		APP_ERROR("[bug] node_stats failed\r\n");
+		break;
+	}
+}
+
+
+void lora_message_callback(struct sLORA_NET *netp)
+{
+	int len = 0;
+	
+	switch(node_stats)
+	{
+	case NODE_STATUS_ONLINE:
+		len = lora_net_User_data_r(netp, gs_usart_write_buf + 24 + 1);
+		
+		if(len >= 0) {
+			if(len > 0) {
+				APP_DEBUG("Gateway user data = ");
+				lora_net_debug_hex( gs_usart_write_buf + 24 + 1, len, 1);
+				
+				/* 用户数据格式  */
+				/* CMD(1) + 源地址（12） + 本机地址（12） + 数据（n） */
+				gs_usart_write_buf[0] = USART_API_SEND_USER_DATA | 0x80;
+				memcpy( &gs_usart_write_buf[1], flash_config->gmac, 12);
+				memcpy( &gs_usart_write_buf[13], nmac, 12);
+				//TX
+				stm32_dma_usart2_write(gs_usart_write_buf,  len + 24 + 1);
+				
+			} else {
+				APP_DEBUG("Gateway is live \r\n");
+			}
+			
+			if ( NODE_BUST_FLAG == DEVICE_NO_BUSY ) {
+				lora_net_User_data(netp, gs_write_buf, 0);
+			} else {
+				lora_net_User_data(netp, gs_write_buf + 12, gs_write_len - 12);
+				
+				APP_DEBUG("send to gateway [%d] = ", gs_write_len - 12);
+				lora_net_debug_hex(gs_write_buf + 12, gs_write_len - 12, 1);
+		
+				NODE_BUST_FLAG = DEVICE_NO_BUSY;
+			}
+				
+			timeout = TickCounter;
+			//refresh timer, delay timeout
+			soft_timer_create(NODE_TIMER_RANDOM_MSG_TIMEOUT, 1, 1, random_message_timeout_callback, TIMEOUT_ONLINE);
+	#ifdef PCB_V2
+			led_rev(0);
+	#else
+			led_rev(2);
+	#endif
+		}
+	
+	
+		break;
+	case NODE_STATUS_OFFLINE:
+		
+		len = lora_net_Network_request_r(netp, nmac, &privateMsg);
+
+		if( len >= 0 ) {
+			timeout = TickCounter;
+			node_stats = NODE_STATUS_ONLINE;
+			
+			//use privateMsg
+			lora_net_Set_Config(netp,  &privateMsg);
+			lora_net_User_data(netp, gs_write_buf, 0);
+			
+			//delay timeout
+			soft_timer_create(NODE_TIMER_RANDOM_MSG_TIMEOUT, 1, 1, random_message_timeout_callback, TIMEOUT_ONLINE);
+		}
+
+	
+		break;
+	case NODE_STATUS_NOBINDED:
+		/* 获取自身ID */
+	
+		len = lora_net_Base_station_binding_r(netp, nmac, temp_config.gmac);
+		
+		if( len >= 0 ) {
+			
+			memcpy(temp_config.gmac, netp->pack.Data + 12, 12);
+			temp_config.isconfig = MAGIC_CONFIG;
+			xfs_sava_cfg( (uint8_t *)&temp_config, sizeof(tConfig) );
+			
+			if(memcmp(&temp_config, flash_config, sizeof(tConfig)) == 0) {
+				//check is save  ^_^  .
+				APP_DEBUG("[ flash ] save gmac = ");
+				lora_net_debug_hex(flash_config->gmac, 12, 1);
+				node_stats = NODE_STATUS_OFFLINE;
+			}
+			
+			timeout = TickCounter;
+			
+			//refresh timer, delay timeout
+			soft_timer_create(NODE_TIMER_RANDOM_MSG_TIMEOUT, 1, 1, random_message_timeout_callback, random_getRandomTime(random_get_value()) );
+		}
+		
+		
+		break;
+	default:
+		APP_ERROR("[bug] node_stats failed\r\n");
+		break;
+	}
+}
+
+
 int main(void)
 {
-	int len = 0, usart_len = 0;
 	int i;
-	
-	tConfig temp_config;
-	
-	uint64_t random_delay_timer = TickCounter;
-	uint16_t random_delay_timeout = 4000;
 	
 	
 	NVIC_PriorityGroupConfig(NVIC_PriorityGroup_0);
@@ -158,7 +325,7 @@ int main(void)
 										// 5: 41.6 kHz, 6: 62.5 kHz, 7: 125 kHz, 8: 250 kHz, 9: 500 kHz, other: Reserved]
 	publicMsg.ErrorCoding = 4;            // ErrorCoding [1: 4/5, 2: 4/6, 3: 4/7, 4: 4/8]
 	
-	for(i=0;i<LORA_MODE_NUM;i++) {
+	for(i=0;i<LORA_MODEL_NUM;i++) {
 		/* Fill Default Value */
 		SX1276LoRaDeinit( &lora[i].loraConfigure );
 		
@@ -172,18 +339,20 @@ int main(void)
 			lora[i].loraConfigure.LoraLowLevelFunc.SX1276WriteBuffer = SX1276WriteBuffer;
 			lora[i].loraConfigure.LoraLowLevelFunc.read_single_reg = read_single_reg;
 			
+			lora[i].loraConfigure.LoRaSettings.RFFrequency = 430000000;    // RFFrequency
+			lora[i].loraConfigure.LoRaSettings.SpreadingFactor = 10;        // 7 SpreadingFactor [6: 64, 7: 128, 8: 256, 9: 512, 10: 1024, 11: 2048, 12: 4096  chips]
+			lora[i].loraConfigure.LoRaSettings.SignalBw = 9;               // 9 SignalBw [0: 7.8kHz, 1: 10.4 kHz, 2: 15.6 kHz, 3: 20.8 kHz, 4: 31.2 kHz,
+												// 5: 41.6 kHz, 6: 62.5 kHz, 7: 125 kHz, 8: 250 kHz, 9: 500 kHz, other: Reserved]
+			lora[i].loraConfigure.LoRaSettings.ErrorCoding = 4;            // ErrorCoding [1: 4/5, 2: 4/6, 3: 4/7, 4: 4/8]
+		
 			lora[i].loraConfigure.random_getRandomFreq = random_getRandomFreq;
 			lora[i].loraConfigure.LoRaSettings.FreqHopOn = true;
-		
-			lora_net_Set_Config(&lora[i],  &publicMsg);
 			
+			lora[i].lora_net_rx_callback = lora_message_callback;
 		}
 		
-
 		lora[i].loraConfigure.LoRaSettings.TxPacketTimeout = 1000;
 		lora[i].loraConfigure.LoRaSettings.RxPacketTimeout = 1000;
-		lora[i].RX_FLAG = 0;
-		
 		
 		
 		lora_net_init(&lora[i]);
@@ -198,146 +367,19 @@ int main(void)
 		APP_DEBUG("NODE MODULE , NO BIND GATEWAY \r\n");
 	}
 	
-	random_delay_timeout = random_getRandomTime( random_get_value() );
+	soft_timer_init();
+	
+	soft_timer_create(NODE_TIMER_LEDS, 1, 1, led_status_callback, 200);  //200ms
+	soft_timer_create(NODE_TIMER_RANDOM_MSG_TIMEOUT, 1, 1, random_message_timeout_callback, random_getRandomTime(random_get_value()) );  //random ms
+	
 	
 	while(1) {
 		
-		usart_rx_proc(usart_rx_callback);
+		lora_net_proc(lora, LORA_MODEL_NUM);    //LORA接收数据处理
+		usart_rx_proc(usart_rx_callback);      //串口接收数据处理
+		soft_timer_proc();                     //定时器处理
 		
-		switch(node_stats)
-		{
-		case NODE_STATUS_ONLINE:
-			//User_data
-			lora_net_Set_Config(&lora[0],  &privateMsg);
-		
-			
-
-			if ( NODE_BUST_FLAG == DEVICE_NO_BUSY ) {
-				len = lora_net_User_data(&lora[0], gs_write_buf, 0, gs_usart_write_buf + 24 + 1);
-			} else {
-				len = lora_net_User_data(&lora[0], gs_write_buf + 12, gs_write_len - 12, gs_usart_write_buf + 24 + 1);
-				
-				APP_DEBUG("send to gateway [%d] = ", gs_write_len - 12);
-				lora_net_debug_hex(gs_write_buf + 12, gs_write_len - 12, 1);
-		
-				NODE_BUST_FLAG = DEVICE_NO_BUSY;
-			}
-			
-			if(len >= 0) {
-				
-				if(len > 0) {
-					APP_DEBUG("Gateway user data = ");
-					lora_net_debug_hex( gs_usart_write_buf + 24 + 1, len, 1);
-					
-					/* 用户数据格式  */
-					/* CMD(1) + 源地址（12） + 本机地址（12） + 数据（n） */
-					gs_usart_write_buf[0] = USART_API_SEND_USER_DATA | 0x80;
-					memcpy( &gs_usart_write_buf[1], flash_config->gmac, 12);
-					memcpy( &gs_usart_write_buf[13], nmac, 12);
-					//TX
-					stm32_dma_usart2_write(gs_usart_write_buf,  len + 24 + 1);
-					
-				} else {
-					APP_DEBUG("Gateway is live \r\n");
-				}
-				
-				timeout = TickCounter;
-		#ifdef PCB_V2
-				led_rev(0);
-		#else
-				led_rev(2);
-		#endif
-			}
-			
-			if(TickCounter - timeout > TIMEOUT_ONLINE) {
-				APP_WARN("[offline] node lost \r\n");
-				node_stats = NODE_STATUS_OFFLINE;
-			}
-			
-			break;
-		case NODE_STATUS_OFFLINE:
-			//Network_request
-		
-			/* Dalay */
-			if(TickCounter - random_delay_timer < random_delay_timeout) {
-				break;
-			}
-			random_delay_timer = TickCounter;
-			random_delay_timeout = random_getRandomTime( random_get_value() );
-			printf("Delay_ms = %d\r\n", random_delay_timeout);
-			/* Dalay end */
-			
-			//Delay_ms( random_getRandomTime( random_get_value() ) );
-		
-			lora_net_Set_Config(&lora[0],  &publicMsg);
-			len = lora_net_Network_request(&lora[0], nmac, flash_config->gmac, &privateMsg);
-			if(len  > 0) {
-				timeout = TickCounter;
-				node_stats = NODE_STATUS_ONLINE;
-			}
-			break;
-		case NODE_STATUS_NOBINDED:
-			/* 获取自身ID */
-			
-			/* Dalay */
-			if(TickCounter - random_delay_timer < random_delay_timeout) {
-				break;
-			}
-			random_delay_timer = TickCounter;
-			random_delay_timeout = random_getRandomTime( random_get_value() );
-			printf("Delay_ms = %d\r\n", random_delay_timeout);
-			/* Dalay end */
-		
-			//Delay_ms( random_getRandomTime( random_get_value() ) );
-		
-			lora_net_Set_Config(&lora[0],  &publicMsg);
-			len = lora_net_Base_station_binding(&lora[0], nmac, temp_config.gmac);
-			if(len > 0) {
-				temp_config.isconfig = MAGIC_CONFIG;
-				xfs_sava_cfg( (uint8_t *)&temp_config, sizeof(tConfig) );
-				
-				if(memcmp(&temp_config, flash_config, sizeof(tConfig)) == 0) {
-					lora_net_debug_hex(flash_config->gmac, 12, 1);
-					node_stats = NODE_STATUS_OFFLINE;
-				}
-			}
-			break;
-		default:
-			break;
-		}
-		
-		if( (TickCounter - Timer2) > 200 ) {
-			//200ms callback
-			Timer2 = TickCounter;
-		#ifdef PCB_V2
-			if(node_stats == NODE_STATUS_OFFLINE) {
-				//offline
-				led_on(0);  //red on
-				led_off(1);  //blue off
-			} else if(node_stats == NODE_STATUS_ONLINE) {
-				//online
-				led_on(1);
-			} else {
-				led_on(0);  //red on
-				led_rev(1);
-			}
-		#endif
-		}
-		
-		if(node_stats != NODE_STATUS_NOBINDED &&
-	#ifdef PCB_V2
-		key_read(0) == Bit_RESET
-	#else
-		key_read(1) == Bit_RESET
-	#endif
-		) {
-			//press
-			//clear config
-			temp_config.isconfig = 0x00000000;
-			xfs_sava_cfg( (uint8_t *)&temp_config, sizeof(tConfig) );
-			node_stats = NODE_STATUS_NOBINDED;
-		}
-		
+		/* end poll */
 		
 	}
 }
