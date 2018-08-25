@@ -21,6 +21,7 @@
 							gs_online_num--;\
 							TableMsg[i].online = 0;\
 							memset(TableMsg[i].nmac, 0, 12);\
+							memset(TableMsg[i].user_code, 0, USER_CODE_LEN);\
 						}while(0)
 /*
  * id
@@ -72,6 +73,7 @@ uint8_t gs_write_buf[256];
 uint8_t gs_usart_write_buf[1024];
 uint8_t gs_write_len = 0;
 uint8_t GATEWAY_BUST_FLAG = 1;   //1: no busy
+uint8_t gs_write_user_data_mode = USER_DATA_MODE_UCM;
 
 void TableMsgDeinit(void)
 {
@@ -85,6 +87,7 @@ void TableMsgDeinit(void)
 		TableMsg[i].ErrorCoding = privateMsg.ErrorCoding;          // ErrorCoding [1: 4/5, 2: 4/6, 3: 4/7, 4: 4/8]
 		TableMsg[i].RxPacketRssiValue = 0;
 		TableMsg[i].RxPacketSnrValue = 0;
+		memset(TableMsg[i].user_code, 0, USER_CODE_LEN);    //UC
 		memset(TableMsg[i].nmac, 0, 12);            //macaddr
 	}
 }
@@ -104,6 +107,7 @@ void checkOnline(void)
 	}
 }
 
+/* 切换至下次查询节点 */
 void nextOnlineCurrentUserId(void)
 {
 	int i = 0;
@@ -136,25 +140,45 @@ void lora_put_data_callback(void)
 	nextOnlineCurrentUserId();
 	
 	if ( GATEWAY_BUST_FLAG == DEVICE_NO_BUSY ) {
+		//不携带数据
 		lora_net_Set_Config(&lora[0],  &TableMsg[current_use_user_id]);
 		lora_net_Gateway_User_data(&lora[0], gs_write_buf, 0);
 	} else {
 		int i;
 		
 		for(i=0;i<LORA_MAX_NODE_NUM;i++) {
-			if( memcmp(gs_write_buf, TableMsg[i].nmac, 12 ) == 0 && TableMsg[i].online ) {
-				lora_net_Set_Config(&lora[0],  &TableMsg[i]);
-				lora_net_Gateway_User_data(&lora[0], gs_write_buf + 12, gs_write_len - 12);
-				
-				APP_DEBUG("send to %d node [%d] = ", i, gs_write_len - 12);
-				lora_net_debug_hex(gs_write_buf + 12, gs_write_len - 12, 1);
-				
-				GATEWAY_BUST_FLAG = DEVICE_NO_BUSY;
-				return;
+			switch(gs_write_user_data_mode)
+			{
+			case USER_DATA_MODE_UCM:
+				if( memcmp(gs_write_buf, TableMsg[i].user_code, USER_CODE_LEN ) == 0 && TableMsg[i].online ) {
+					lora_net_Set_Config(&lora[0],  &TableMsg[i]);
+					lora_net_Gateway_User_data(&lora[0], gs_write_buf + USER_CODE_LEN, gs_write_len - USER_CODE_LEN);
+					
+					APP_DEBUG("ucm send to %d(%04x) node [%d] = ", i, *((uint16_t *)gs_write_buf), gs_write_len - USER_CODE_LEN);
+					lora_net_debug_hex(gs_write_buf + USER_CODE_LEN, gs_write_len - USER_CODE_LEN, 1);
+					
+					GATEWAY_BUST_FLAG = DEVICE_NO_BUSY;
+					return;
+				}
+				break;
+			case USER_DATA_MODE_DEFAULT:
+				if( memcmp(gs_write_buf, TableMsg[i].nmac, 12 ) == 0 && TableMsg[i].online ) {
+					lora_net_Set_Config(&lora[0],  &TableMsg[i]);
+					lora_net_Gateway_User_data(&lora[0], gs_write_buf + 12, gs_write_len - 12);
+					
+					APP_DEBUG("send to %d node [%d] = ", i, gs_write_len - 12);
+					lora_net_debug_hex(gs_write_buf + 12, gs_write_len - 12, 1);
+					
+					GATEWAY_BUST_FLAG = DEVICE_NO_BUSY;
+					return;
+				}
+				break;
+			default:
+				break;
 			}
 		}
 		
-		APP_DEBUG("[offline] Can't send, usart dat [%d] = ", len);
+		APP_DEBUG("[offline] send error , usart dat [%d] = ", len);
 		
 		GATEWAY_BUST_FLAG = DEVICE_NO_BUSY;
 	}
@@ -171,7 +195,7 @@ void usart_rx_callback(void)
 	uint8_t *usart_buffer = usart_rx_get_buffer_ptr();
 	switch( usart_buffer[0] )
 	{
-		case USART_API_READ_PARAMETER1:
+	case USART_API_READ_PARAMETER1:
 		/* CMD(1) + FHKEY(4) + SF(0.4) + SB(0.4) + EC(0.5) */
 		gs_usart_write_buf[0] = USART_API_READ_PARAMETER1 | 0x80;
 		
@@ -291,22 +315,39 @@ void usart_rx_callback(void)
 	
 	case USART_API_SEND_USER_DATA:
 		len = usart_rx_get_length();
-		if( len >= 13 && GATEWAY_BUST_FLAG == 1 ) {
+		if( len >= 13 && GATEWAY_BUST_FLAG == DEVICE_NO_BUSY ) {
 			gs_write_len = len - 1;
 			memcpy(gs_write_buf, usart_rx_get_buffer_ptr() + 1, gs_write_len);
-			GATEWAY_BUST_FLAG = 0;
+			GATEWAY_BUST_FLAG = DEVICE_BUSY;
+			gs_write_user_data_mode = USER_DATA_MODE_DEFAULT;
 		} else {
 			APP_DEBUG("[ busy ] usart data [%d] = \r\n", len - 1);
 		}
 		
 		usart_rx_release();
 		break;
+		
+	case USART_API_SEND_USER_DATA_UCM:
+		len = usart_rx_get_length();
+		if( len > 2 && GATEWAY_BUST_FLAG == DEVICE_NO_BUSY ) {
+			gs_write_len = len - 1;
+			memcpy(gs_write_buf, usart_rx_get_buffer_ptr() + 1, gs_write_len);
+			GATEWAY_BUST_FLAG = DEVICE_BUSY;
+			gs_write_user_data_mode = USER_DATA_MODE_UCM;
+		} else {
+			APP_DEBUG("[ busy ] usart ucm data [%d] = \r\n", len - 1);
+		}
+		
+		usart_rx_release();
+		break;		
+		
 	default:
 		
 		break;
 	}
 }
 
+/* 查询节点超时 */
 void private_write_timeout_callback(void)
 {
 	if( gs_online_num ) {
@@ -322,7 +363,21 @@ void private_message_callback(struct sLORA_NET *netp)
 {
 	int len = 0;
 	
-	len = lora_net_Gateway_User_data_r(netp, gs_usart_write_buf + 25);
+	switch(gs_write_user_data_mode)
+	{
+	case USER_DATA_MODE_UCM:
+		/* CMD(1) + UC（USER_CODE_LEN） + 数据（n） */
+		len = lora_net_Gateway_User_data_r(netp, gs_usart_write_buf + 1);
+		break;
+	
+	case USER_DATA_MODE_DEFAULT:
+		/* CMD(1) + 源地址（12） + 本机地址（12） + 数据（n） */
+		len = lora_net_Gateway_User_data_r(netp, gs_usart_write_buf + 25);
+		break;
+	
+	default:
+		break;
+	}
 	
 	if(len >= 0) {
 		
@@ -332,14 +387,41 @@ void private_message_callback(struct sLORA_NET *netp)
 		
 		if(len > 0) {
 			/* 用户数据格式  */
-			/* CMD(1) + 源地址（12） + 本机地址（12） + 数据（n） */
-			gs_usart_write_buf[0] = USART_API_SEND_USER_DATA | 0x80;
-			memcpy(gs_usart_write_buf + 1, TableMsg[current_use_user_id].nmac , 12);
-			memcpy(gs_usart_write_buf + 13, gmac , 12);
-			stm32_dma_usart2_write(gs_usart_write_buf, len + 25);
+			switch(gs_write_user_data_mode)
+			{
+			case USER_DATA_MODE_UCM:
+				{
+					uint8_t *user_code_ptr = gs_usart_write_buf + 1;
+						
+					if(len >= USER_CODE_LEN) {
+						memcpy(TableMsg[current_use_user_id].user_code, user_code_ptr, USER_CODE_LEN);
+						APP_DEBUG("Node %d(%04x) ucm data = ", current_use_user_id, *((uint16_t *)TableMsg[current_use_user_id].user_code) );
+					} else {
+						APP_DEBUG("Node %d ucm data = ", current_use_user_id);
+					}
+					
+					/* CMD(1) + 数据（n） */
+					gs_usart_write_buf[0] = USART_API_SEND_USER_DATA_UCM | 0x80;
+					stm32_dma_usart2_write(gs_usart_write_buf, len + 1);
+					
+					lora_net_debug_hex(netp->pack.Data, len - 1, 1);
+				}
+				break;
 			
-			APP_DEBUG("Node %d data = ", current_use_user_id);
-			lora_net_debug_hex(netp->pack.Data, len - 1, 1);
+			case USER_DATA_MODE_DEFAULT:
+				/* CMD(1) + 源地址（12） + 本机地址（12） + 数据（n） */
+				gs_usart_write_buf[0] = USART_API_SEND_USER_DATA | 0x80;
+				memcpy(gs_usart_write_buf + 1, TableMsg[current_use_user_id].nmac , 12);
+				memcpy(gs_usart_write_buf + 13, gmac , 12);
+				stm32_dma_usart2_write(gs_usart_write_buf, len + 25);
+				
+				APP_DEBUG("Node %d data = ", current_use_user_id);
+				lora_net_debug_hex(netp->pack.Data, len - 1, 1);
+				break;
+			
+			default:
+				break;
+			}
 		} else {
 			APP_DEBUG("Node %d is Live \r\n", current_use_user_id);
 		}
@@ -477,6 +559,11 @@ int main(void)
 	TableMsgDeinit();
 	
 	for(i=0;i<LORA_MODEL_NUM;i++) {
+		
+		uint64_t delay_tm = 0;
+		delay_tm = TickCounter;
+		while(TickCounter - delay_tm < 500);
+		
 		/* Fill Default Value */
 		SX1276LoRaDeinit( &lora[i].loraConfigure );
 		

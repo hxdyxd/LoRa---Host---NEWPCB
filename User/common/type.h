@@ -24,6 +24,8 @@
 
 #define PACK_TIMEOUT   (1200)   //1s
 
+#define USER_CODE_LEN  (2)  //2 bytes
+
 
 
 /* global define */
@@ -42,6 +44,9 @@
 #define NODE_TIMER_LEDS                       (0)
 #define NODE_TIMER_RANDOM_MSG_TIMEOUT         (1)
 
+#define USER_DATA_MODE_DEFAULT  (0)
+#define USER_DATA_MODE_UCM      (1)
+
 
 /* global typedef */
 
@@ -56,6 +61,7 @@ typedef struct sTableMsg
 	uint64_t LastActive;
 	double RxPacketRssiValue;
 	int8_t RxPacketSnrValue;
+	uint8_t user_code[USER_CODE_LEN];
 }tTableMsg;
 
 
