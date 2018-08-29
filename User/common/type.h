@@ -37,6 +37,9 @@
 #define NODE_STATUS_OFFLINE     (1)
 #define NODE_STATUS_NOBINDED    (2)
 
+#define GATEWAY_STATUS_DEFAULT    (0)
+#define GATEWAY_STATUS_CONFIG_ON  (1)
+
 #define GATEWAY_TIMER_STATUS                  (0)
 #define GATEWAY_TIMER_LEDS                    (1)
 #define GATEWAY_TIMER_PRIVATE_MSG_TIMEOUT     (2)

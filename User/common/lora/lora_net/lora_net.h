@@ -59,7 +59,7 @@ void lora_net_Set_Config(LORA_NET *netp, tTableMsg *msg);
 //gateway
 void lora_net_Gateway_User_data(LORA_NET *netp, uint8_t *buffer, uint8_t len);  //fix in 2018 07 13
 int lora_net_Gateway_User_data_r(LORA_NET *netp, uint8_t *buffer);  //fix in 2018 07 13
-int lora_net_Gateway_Network_request(LORA_NET *netp, tTableMsg *msg, uint8_t *gmac);
+int lora_net_Gateway_Network_request(LORA_NET *netp, tTableMsg *msg, uint8_t *gmac, uint8_t allow_binding);  //fix in 2018 08 29
 
 //node
 void lora_net_User_data(LORA_NET *netp, uint8_t *send_buffer, uint8_t len);  //fix in 2018 07 13

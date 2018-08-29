@@ -9,6 +9,7 @@
 #include "random_freq.h"
 #include "systick.h"
 #include "leds.h"
+#include "keys.h"
 #include "app_debug.h"
 #include "interface_usart.h"
 #include "usart_rx.h"
@@ -32,6 +33,7 @@ uint8_t *gmac = (uint8_t *)0x1FFFF7E8;
  *  model message
 */
 LORA_NET lora[LORA_MODEL_NUM ];
+uint8_t gateway_stats = GATEWAY_STATUS_DEFAULT;
 tTableMsg privateMsg = {
 	.HoppingFrequencieSeed = 1,  //RANDOM
 	.SpreadingFactor = 10,        // 7 SpreadingFactor [6: 64, 7: 128, 8: 256, 9: 512, 10: 1024, 11: 2048, 12: 4096  chips]
@@ -73,7 +75,8 @@ uint8_t gs_write_buf[256];
 uint8_t gs_usart_write_buf[1024];
 uint8_t gs_write_len = 0;
 uint8_t GATEWAY_BUST_FLAG = 1;   //1: no busy
-uint8_t gs_write_user_data_mode = USER_DATA_MODE_UCM;
+uint8_t gs_write_user_data_mode = USER_DATA_MODE_UCM;   //USART MODE
+
 
 void TableMsgDeinit(void)
 {
@@ -462,7 +465,14 @@ void public_message_callback(struct sLORA_NET *netp)
 		
 		/* 等待接收完成 */
 		TableMsg[current_id].HoppingFrequencieSeed = random_get_value();
-		len = lora_net_Gateway_Network_request(netp, &TableMsg[current_id], gmac);
+		
+		/* 2018 08 29 add config mode */
+		if(gateway_stats == GATEWAY_STATUS_CONFIG_ON) {
+			len = lora_net_Gateway_Network_request(netp, &TableMsg[current_id], gmac, 1);
+		} else {
+			len = lora_net_Gateway_Network_request(netp, &TableMsg[current_id], gmac, 0);
+		}
+		
 		if( len == 19) {
 			APP_DEBUG("[new] device = %d\r\n", current_id);
 			TableMsg[current_id].LastActive = TickCounter;
@@ -507,6 +517,10 @@ void led_status_callback(void)
 		i--;
 	}
 	
+	if(gateway_stats == GATEWAY_STATUS_CONFIG_ON) {
+		led_status = 1;
+	}
+	
 	if(led_status) {
 		
 #ifdef PCB_V2
@@ -523,6 +537,26 @@ void led_status_callback(void)
 		led_on(2);  //high = off
 #endif	
 		
+	}
+	
+	if(
+	#ifdef PCB_V2
+	key_read(0) == Bit_RESET
+#else
+	key_read(1) == Bit_RESET
+#endif
+	) {
+		switch(gateway_stats){
+		case GATEWAY_STATUS_DEFAULT:
+			gateway_stats = GATEWAY_STATUS_CONFIG_ON;
+			break;
+		case GATEWAY_STATUS_CONFIG_ON:
+			gateway_stats = GATEWAY_STATUS_DEFAULT;
+			break;
+		default:
+			gateway_stats = GATEWAY_STATUS_DEFAULT;
+			break;
+		}
 	}
 }
 

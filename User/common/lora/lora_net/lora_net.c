@@ -123,7 +123,7 @@ int lora_net_Gateway_User_data_r(LORA_NET *netp, uint8_t *buffer)
 }
 
 
-int lora_net_Gateway_Network_request(LORA_NET *netp, tTableMsg *msg, uint8_t *gmac)
+int lora_net_Gateway_Network_request(LORA_NET *netp, tTableMsg *msg, uint8_t *gmac, uint8_t allow_binding)
 {
 	int n = netp->pack.size;
 	uint32_t timer = TickCounter;
@@ -163,7 +163,7 @@ int lora_net_Gateway_Network_request(LORA_NET *netp, tTableMsg *msg, uint8_t *gm
 			APP_DEBUG(" Ec = %d \r\n", msg->ErrorCoding );
 			return (19);
 		}
-	} else if(netp->pack.Flag_version == FLAG_VER && netp->pack.Flag_direction == FLAG_DIR_UP && netp->pack.Flag_type == FLAG_TYPE_BASE_STATION_BINDING && n == 13) {
+	} else if(netp->pack.Flag_version == FLAG_VER && netp->pack.Flag_direction == FLAG_DIR_UP && netp->pack.Flag_type == FLAG_TYPE_BASE_STATION_BINDING && n == 13 && allow_binding) {
 		netp->pack.Flag_direction = FLAG_DIR_DOWN;
 		memcpy( netp->pack.Data + 12, gmac, 12);
 		
