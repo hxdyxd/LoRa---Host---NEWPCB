@@ -34,15 +34,15 @@ uint8_t *gmac = (uint8_t *)0x1FFFF7E8;
 LORA_NET lora[LORA_MODEL_NUM ];
 tTableMsg privateMsg = {
 	.HoppingFrequencieSeed = 1,  //RANDOM
-	.SpreadingFactor = 9,        // 7 SpreadingFactor [6: 64, 7: 128, 8: 256, 9: 512, 10: 1024, 11: 2048, 12: 4096  chips]
+	.SpreadingFactor = 10,        // 7 SpreadingFactor [6: 64, 7: 128, 8: 256, 9: 512, 10: 1024, 11: 2048, 12: 4096  chips]
 	.SignalBw = 8,               // 9 SignalBw [0: 7.8kHz, 1: 10.4 kHz, 2: 15.6 kHz, 3: 20.8 kHz, 4: 31.2 kHz,
 										// 5: 41.6 kHz, 6: 62.5 kHz, 7: 125 kHz, 8: 250 kHz, 9: 500 kHz, other: Reserved]
-	.ErrorCoding = 3,            // ErrorCoding [1: 4/5, 2: 4/6, 3: 4/7, 4: 4/8]
+	.ErrorCoding = 4,            // ErrorCoding [1: 4/5, 2: 4/6, 3: 4/7, 4: 4/8]
 };						
 tTableMsg publicMsg = {
 	.HoppingFrequencieSeed = 0,
 	.SpreadingFactor = 10,        // 7 SpreadingFactor [6: 64, 7: 128, 8: 256, 9: 512, 10: 1024, 11: 2048, 12: 4096  chips]
-	.SignalBw = 9,               // 9 SignalBw [0: 7.8kHz, 1: 10.4 kHz, 2: 15.6 kHz, 3: 20.8 kHz, 4: 31.2 kHz,
+	.SignalBw = 8,               // 9 SignalBw [0: 7.8kHz, 1: 10.4 kHz, 2: 15.6 kHz, 3: 20.8 kHz, 4: 31.2 kHz,
 										// 5: 41.6 kHz, 6: 62.5 kHz, 7: 125 kHz, 8: 250 kHz, 9: 500 kHz, other: Reserved]
 	.ErrorCoding = 4,            // ErrorCoding [1: 4/5, 2: 4/6, 3: 4/7, 4: 4/8]
 };						
@@ -152,10 +152,10 @@ void lora_put_data_callback(void)
 			case USER_DATA_MODE_UCM:
 				if( memcmp(gs_write_buf, TableMsg[i].user_code, USER_CODE_LEN ) == 0 && TableMsg[i].online ) {
 					lora_net_Set_Config(&lora[0],  &TableMsg[i]);
-					lora_net_Gateway_User_data(&lora[0], gs_write_buf + USER_CODE_LEN, gs_write_len - USER_CODE_LEN);
+					lora_net_Gateway_User_data(&lora[0], gs_write_buf, gs_write_len);
 					
-					APP_DEBUG("ucm send to %d(%04x) node [%d] = ", i, *((uint16_t *)gs_write_buf), gs_write_len - USER_CODE_LEN);
-					lora_net_debug_hex(gs_write_buf + USER_CODE_LEN, gs_write_len - USER_CODE_LEN, 1);
+					APP_DEBUG("ucm send to %d(%04x) node [%d] = ", i, *((uint16_t *)gs_write_buf), gs_write_len);
+					lora_net_debug_hex(gs_write_buf, gs_write_len, 1);
 					
 					GATEWAY_BUST_FLAG = DEVICE_NO_BUSY;
 					return;
@@ -178,7 +178,7 @@ void lora_put_data_callback(void)
 			}
 		}
 		
-		APP_DEBUG("[offline] send error , usart dat [%d] = ", len);
+		APP_DEBUG("[offline] send error , usart dat [%d] = ", gs_write_len);
 		
 		GATEWAY_BUST_FLAG = DEVICE_NO_BUSY;
 	}
@@ -532,7 +532,11 @@ void online_num_tips_callback(void)
 	APP_DEBUG("ONLINE NUM \t = \t %d \r\n", gs_online_num);
 }
 
-int main(void)
+#ifdef PROJECT_COMMON
+	int main_gateway_core(void)
+#else
+	int main(void)
+#endif
 {
 	int i;
 	
