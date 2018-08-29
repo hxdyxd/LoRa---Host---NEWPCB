@@ -423,7 +423,7 @@ void private_message_callback(struct sLORA_NET *netp)
 				break;
 			}
 		} else {
-			APP_DEBUG("Node %d is Live \r\n", current_use_user_id);
+			APP_DEBUG("Node %d is Live, snr = %d, rssi = %g\r\n", current_use_user_id, TableMsg[current_use_user_id].RxPacketSnrValue, TableMsg[current_use_user_id].RxPacketRssiValue );
 		}
 		
 		//APP_DEBUG("time = %d ms Rssi: %g Snr = %d dB\033[0m\r\n",(int)(TickCounter - RXtimer), TableMsg[current_use_user_id].RxPacketRssiValue, TableMsg[current_use_user_id].RxPacketSnrValue);
