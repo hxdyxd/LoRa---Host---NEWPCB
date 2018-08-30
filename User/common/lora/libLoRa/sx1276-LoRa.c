@@ -168,21 +168,21 @@ void SX1276LoRaSetLoRaOn( tLora *loraConfigure, bool enable )
     }
 }
 
-void SX1276LoRaReset( void )
-{
-	uint32_t startTick;
-    GPIO_ResetBits(GPIOA, GPIO_Pin_3);
-    
-    // Wait 1ms
-    startTick = GET_TICK_COUNT( );
-    while( ( GET_TICK_COUNT( ) - startTick ) < TICK_RATE_MS( 1 ) );    
+//void SX1276LoRaReset( void )
+//{
+//	uint32_t startTick;
+//    GPIO_ResetBits(GPIOA, GPIO_Pin_3);
+//    
+//    // Wait 1ms
+//    startTick = GET_TICK_COUNT( );
+//    while( ( GET_TICK_COUNT( ) - startTick ) < TICK_RATE_MS( 1 ) );    
 
-    GPIO_SetBits(GPIOA, GPIO_Pin_3);
-    
-    // Wait 6ms
-    startTick = GET_TICK_COUNT( );
-    while( ( GET_TICK_COUNT( ) - startTick ) < TICK_RATE_MS( 6 ) );
-}
+//    GPIO_SetBits(GPIOA, GPIO_Pin_3);
+//    
+//    // Wait 6ms
+//    startTick = GET_TICK_COUNT( );
+//    while( ( GET_TICK_COUNT( ) - startTick ) < TICK_RATE_MS( 6 ) );
+//}
 
 void SX1276LoRaInit( tLora *loraConfigure )
 {

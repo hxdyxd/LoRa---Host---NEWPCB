@@ -138,7 +138,6 @@ void nextOnlineCurrentUserId(void)
 
 void lora_put_data_callback(void)
 {
-	uint8_t len;
 	/* next user id */
 	nextOnlineCurrentUserId();
 	
@@ -538,28 +537,23 @@ void led_status_callback(void)
 #endif	
 		
 	}
-	
-	if(
-	#ifdef PCB_V2
-	key_read(0) == Bit_RESET
-#else
-	key_read(1) == Bit_RESET
-#endif
-	) {
-		switch(gateway_stats){
-		case GATEWAY_STATUS_DEFAULT:
-			gateway_stats = GATEWAY_STATUS_CONFIG_ON;
-			break;
-		case GATEWAY_STATUS_CONFIG_ON:
-			gateway_stats = GATEWAY_STATUS_DEFAULT;
-			break;
-		default:
-			gateway_stats = GATEWAY_STATUS_DEFAULT;
-			break;
-		}
-	}
 }
 
+
+void user_key_proc(int8_t key_id)
+{
+	switch(gateway_stats){
+	case GATEWAY_STATUS_DEFAULT:
+		gateway_stats = GATEWAY_STATUS_CONFIG_ON;
+		break;
+	case GATEWAY_STATUS_CONFIG_ON:
+		gateway_stats = GATEWAY_STATUS_DEFAULT;
+		break;
+	default:
+		gateway_stats = GATEWAY_STATUS_DEFAULT;
+		break;
+	}
+}
 
 void online_num_tips_callback(void)
 {
@@ -651,6 +645,7 @@ void online_num_tips_callback(void)
 		
 		lora_net_proc(lora, LORA_MODEL_NUM);   //LORA接收数据处理
 		usart_rx_proc(usart_rx_callback);     //串口接收数据处理
+		keys_proc(user_key_proc);
 		soft_timer_proc();                    //定时器处理
 		
 		/* end poll */

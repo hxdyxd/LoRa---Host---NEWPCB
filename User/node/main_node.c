@@ -156,7 +156,8 @@ void usart_rx_callback(void)
 		memcpy( usartStatus.gmac, flash_config->gmac, 12);
 		usartStatus.status = node_stats;
 	
-		uint16_t diff_lat = (TickCounter - timeout);
+		uint16_t diff_lat;
+		diff_lat = (TickCounter - timeout);
 		usartStatus.diff_lat[0] = (diff_lat >> 8) & 0xff;
 		usartStatus.diff_lat[1] = diff_lat & 0xff;
 	
@@ -230,14 +231,12 @@ void led_status_callback(void)
 		led_rev(1);
 	}
 #endif
-	
-	if(node_stats != NODE_STATUS_NOBINDED &&
-#ifdef PCB_V2
-	key_read(0) == Bit_RESET
-#else
-	key_read(1) == Bit_RESET
-#endif
-	) {
+}
+
+
+void user_key_proc(int8_t key_id)
+{
+	if(node_stats != NODE_STATUS_NOBINDED) {
 		//press
 		//clear config
 		temp_config.isconfig = 0x00000000;
@@ -523,6 +522,7 @@ void lora_message_callback(struct sLORA_NET *netp)
 		
 		lora_net_proc(lora, LORA_MODEL_NUM);    //LORA接收数据处理
 		usart_rx_proc(usart_rx_callback);      //串口接收数据处理
+		keys_proc(user_key_proc);
 		soft_timer_proc();                     //定时器处理
 		
 		/* end poll */
