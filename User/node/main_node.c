@@ -236,7 +236,14 @@ void led_status_callback(void)
 
 void user_key_proc(int8_t key_id)
 {
-	if(node_stats != NODE_STATUS_NOBINDED) {
+	if(node_stats != NODE_STATUS_NOBINDED &&
+#ifdef PCB_V2	
+	(0) == key_id	
+#else	
+	(1) == key_id	
+#endif		
+	) {
+		APP_WARN("[key] press %d\r\n", key_id);
 		//press
 		//clear config
 		temp_config.isconfig = 0x00000000;
@@ -464,6 +471,7 @@ void lora_message_callback(struct sLORA_NET *netp)
 	
 	systick_init();
 	leds_init();
+	keys_init();
 	
 #ifdef PCB_V2
 	led_on(0);

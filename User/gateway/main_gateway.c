@@ -542,6 +542,7 @@ void led_status_callback(void)
 
 void user_key_proc(int8_t key_id)
 {
+	APP_WARN("[key] press %d\r\n", key_id);
 	switch(gateway_stats){
 	case GATEWAY_STATUS_DEFAULT:
 		gateway_stats = GATEWAY_STATUS_CONFIG_ON;
@@ -572,6 +573,7 @@ void online_num_tips_callback(void)
 	
 	systick_init();
 	leds_init();
+	keys_init();
 	
 #ifdef PCB_V2
 	led_on(0);
