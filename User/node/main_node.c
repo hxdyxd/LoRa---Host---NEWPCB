@@ -209,7 +209,7 @@ void usart_rx_callback(void)
 		break;		
 	
 	default:
-		
+		usart_rx_release();
 		break;
 	}
 }
@@ -236,13 +236,7 @@ void led_status_callback(void)
 
 void user_key_proc(int8_t key_id)
 {
-	if(node_stats != NODE_STATUS_NOBINDED &&
-#ifdef PCB_V2	
-	(0) == key_id	
-#else	
-	(1) == key_id	
-#endif		
-	) {
+	if(node_stats != NODE_STATUS_NOBINDED) {
 		APP_WARN("[key] press %d\r\n", key_id);
 		//press
 		//clear config

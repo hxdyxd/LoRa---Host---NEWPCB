@@ -344,7 +344,7 @@ void usart_rx_callback(void)
 		break;		
 		
 	default:
-		
+		usart_rx_release();
 		break;
 	}
 }
