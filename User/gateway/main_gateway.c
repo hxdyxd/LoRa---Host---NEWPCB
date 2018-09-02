@@ -24,10 +24,16 @@
 							memset(TableMsg[i].nmac, 0, 12);\
 							memset(TableMsg[i].user_code, 0, USER_CODE_LEN);\
 						}while(0)
+
 /*
  * id
 */
 uint8_t *gmac = (uint8_t *)0x1FFFF7E8;
+
+/*
+ * debug
+ */
+uint8_t long_debug_timeout = 0;
 
 /*
  *  model message
@@ -353,7 +359,13 @@ void usart_rx_callback(void)
 void private_write_timeout_callback(void)
 {
 	if( gs_online_num ) {
-		APP_WARN("Node %d Timeout use %d\r\n", current_use_user_id, TableMsg[current_use_user_id].HoppingFrequencieSeed);
+		long_debug_timeout++;
+		APP_WARN("Node %d Timeout use %d, ldt = %d\r\n", current_use_user_id, TableMsg[current_use_user_id].HoppingFrequencieSeed, long_debug_timeout);
+		if(long_debug_timeout > 12) {
+			APP_WARN("[ System Reset ] ldt = %d\r\n", long_debug_timeout);
+			__set_FAULTMASK(1);
+			NVIC_SystemReset();
+		}
 	
 		lora_put_data_callback();
 		RXtimer = TickCounter;
@@ -433,6 +445,8 @@ void private_message_callback(struct sLORA_NET *netp)
 		lora_put_data_callback();
 		soft_timer_create(GATEWAY_TIMER_PRIVATE_MSG_TIMEOUT, 1, 1, private_write_timeout_callback, PACK_TIMEOUT);
 		RXtimer = TickCounter;
+		
+		long_debug_timeout = 0;  //debug add 2018 09 02
 		
 	#ifdef PCB_V2
 		led_rev(0);  //red
@@ -596,7 +610,7 @@ void online_num_tips_callback(void)
 		
 		uint64_t delay_tm = 0;
 		delay_tm = TickCounter;
-		while(TickCounter - delay_tm < 500);
+		while(TickCounter - delay_tm < 1000);
 		
 		/* Fill Default Value */
 		SX1276LoRaDeinit( &lora[i].loraConfigure );

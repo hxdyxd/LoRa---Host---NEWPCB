@@ -442,6 +442,11 @@
               <FileType>1</FileType>
               <FilePath>..\Libraries\CMSIS\core_cm3.c</FilePath>
             </File>
+            <File>
+              <FileName>core_cm3.h</FileName>
+              <FileType>5</FileType>
+              <FilePath>..\Libraries\CMSIS\core_cm3.h</FilePath>
+            </File>
           </Files>
         </Group>
         <Group>
@@ -1194,6 +1199,11 @@
               <FileType>1</FileType>
               <FilePath>..\Libraries\CMSIS\core_cm3.c</FilePath>
             </File>
+            <File>
+              <FileName>core_cm3.h</FileName>
+              <FileType>5</FileType>
+              <FilePath>..\Libraries\CMSIS\core_cm3.h</FilePath>
+            </File>
           </Files>
         </Group>
         <Group>
@@ -1945,6 +1955,11 @@
               <FileName>core_cm3.c</FileName>
               <FileType>1</FileType>
               <FilePath>..\Libraries\CMSIS\core_cm3.c</FilePath>
+            </File>
+            <File>
+              <FileName>core_cm3.h</FileName>
+              <FileType>5</FileType>
+              <FilePath>..\Libraries\CMSIS\core_cm3.h</FilePath>
             </File>
           </Files>
         </Group>
