@@ -610,7 +610,7 @@ void online_num_tips_callback(void)
 		
 		uint64_t delay_tm = 0;
 		delay_tm = TickCounter;
-		while(TickCounter - delay_tm < 1000);
+		while(TickCounter - delay_tm < 200);
 		
 		/* Fill Default Value */
 		SX1276LoRaDeinit( &lora[i].loraConfigure );
