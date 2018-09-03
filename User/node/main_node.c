@@ -25,7 +25,6 @@
 */
 uint16_t timeout_1x1 = RANDOM_TIMEOUT_LOW;
 uint16_t timeout_1x2 = RANDOM_TIMEOUT_HIGH;
-uint16_t timeout_2 = PACK_TIMEOUT;
 uint16_t timeout_3 = TIMEOUT_ONLINE;
 LORA_NET lora[LORA_MODEL_NUM];
 uint8_t node_stats = NODE_STATUS_OFFLINE;
@@ -140,8 +139,8 @@ void usart_rx_callback(void)
 		gs_usart_write_buf[3] = timeout_1x2 >> 8;
 		gs_usart_write_buf[4] = timeout_1x2 & 0xff;
 
-		gs_usart_write_buf[5] = timeout_2 >> 8;
-		gs_usart_write_buf[6] = timeout_2 & 0xff;
+		gs_usart_write_buf[5] = 0xff;
+		gs_usart_write_buf[6] = 0xff;
 
 		gs_usart_write_buf[7] = (timeout_3/1000) >> 8;
 		gs_usart_write_buf[8] = (timeout_3/1000) & 0xff;
@@ -149,7 +148,7 @@ void usart_rx_callback(void)
 		stm32_dma_usart2_write(gs_usart_write_buf, 9 );
 		usart_rx_release();
 	
-		APP_DEBUG("usart read time %d-%d , %d , %d\r\n", timeout_1x1, timeout_1x2, timeout_2, timeout_3);
+		APP_DEBUG("usart read time %d-%d , %d , %d\r\n", timeout_1x1, timeout_1x2, 0, timeout_3);
 		break;
 		
 	case USART_API_READ_STATUS:
@@ -216,12 +215,11 @@ void usart_rx_callback(void)
 		if(len == 9) {
 			timeout_1x1 = (usart_buffer[1] << 8) | usart_buffer[2];
 			timeout_1x2 = (usart_buffer[3] << 8) | usart_buffer[4];
-			timeout_2 = (usart_buffer[5] << 8) | usart_buffer[6];
 			timeout_3 = (usart_buffer[7] << 8) | usart_buffer[8];
 			timeout_3 *= 1000;
 			gs_usart_write_buf[0] = USART_API_WRITE_TIME | 0x80;
 			stm32_dma_usart2_write(gs_usart_write_buf,  1);
-			APP_DEBUG("usart write time %d %d, %d, %d\r\n", timeout_1x1, timeout_1x2, timeout_2, timeout_3);
+			APP_DEBUG("usart write time %d %d, %d, %d\r\n", timeout_1x1, timeout_1x2, 0, timeout_3);
 		}
 	
 		usart_rx_release();
@@ -449,7 +447,7 @@ void lora_message_callback(struct sLORA_NET *netp)
 				
 			timeout = TickCounter;
 			//refresh timer, delay timeout
-			soft_timer_create(NODE_TIMER_RANDOM_MSG_TIMEOUT, 1, 1, random_message_timeout_callback, TIMEOUT_ONLINE);
+			soft_timer_create(NODE_TIMER_RANDOM_MSG_TIMEOUT, 1, 1, random_message_timeout_callback, timeout_3);  //TIMEOUT_ONLINE
 	#ifdef PCB_V2
 			led_rev(0);
 	#else
@@ -472,7 +470,7 @@ void lora_message_callback(struct sLORA_NET *netp)
 			lora_net_User_data(netp, gs_write_buf, 0);
 			
 			//delay timeout
-			soft_timer_create(NODE_TIMER_RANDOM_MSG_TIMEOUT, 1, 1, random_message_timeout_callback, TIMEOUT_ONLINE);
+			soft_timer_create(NODE_TIMER_RANDOM_MSG_TIMEOUT, 1, 1, random_message_timeout_callback, timeout_3);  //TIMEOUT_ONLINE
 		}
 
 	
