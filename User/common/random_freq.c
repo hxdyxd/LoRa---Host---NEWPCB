@@ -1,7 +1,8 @@
 #include "random_freq.h"
 #include "stm32f10x.h"
 
-
+extern uint16_t timeout_1x1;
+extern uint16_t timeout_1x2;
 
 void random_adc_config(void)
 {
@@ -91,8 +92,8 @@ uint32_t random_getRandomFreq(uint32_t seed, int index)
 uint32_t random_getRandomTime(uint32_t seed)
 {
 	int i;
-	int min = 4000;
-	int max = 14000;
+	int min = timeout_1x1;
+	int max = timeout_1x2;
 	srand(seed);
 	for(i=0;i<seed%20;i++) {
 		rand();

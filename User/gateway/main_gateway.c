@@ -38,6 +38,10 @@ uint8_t long_debug_timeout = 0;
 /*
  *  model message
 */
+uint16_t timeout_1x1 = RANDOM_TIMEOUT_LOW;
+uint16_t timeout_1x2 = RANDOM_TIMEOUT_HIGH;
+uint16_t timeout_2 = PACK_TIMEOUT;
+uint16_t timeout_3 = TIMEOUT_ONLINE;
 LORA_NET lora[LORA_MODEL_NUM ];
 uint8_t gateway_stats = GATEWAY_STATUS_DEFAULT;
 tTableMsg privateMsg = {
@@ -106,7 +110,7 @@ void checkOnline(void)
 {
 	int i;
 	for(i=0;i<LORA_MAX_NODE_NUM;i++) {
-		if( TableMsg[i].online == 1 && (TickCounter - TableMsg[i].LastActive) > TIMEOUT_ONLINE) {
+		if( TableMsg[i].online == 1 && (TickCounter - TableMsg[i].LastActive) > timeout_3) {  //TIMEOUT_ONLINE
 			//offline
 			APP_DEBUG("[offline]  node = ");
 			lora_net_debug_hex(TableMsg[i].nmac, 12, 1);
@@ -257,21 +261,21 @@ void usart_rx_callback(void)
 		/* CMD(1) + RANDOM LOW(2) + RANDOM HIGH(2) + TIMEOUT(2) + ONLINE TIMEOUT(2) */
 		gs_usart_write_buf[0] = USART_API_READ_TIME | 0x80;
 		
-		gs_usart_write_buf[1] = 0;
-		gs_usart_write_buf[2] = 0;
-		gs_usart_write_buf[3] = 0;
-		gs_usart_write_buf[4] = 0;
+		gs_usart_write_buf[1] = 0xff;
+		gs_usart_write_buf[2] = 0xff;
+		gs_usart_write_buf[3] = 0xff;
+		gs_usart_write_buf[4] = 0xff;
 	
-		gs_usart_write_buf[5] = 0;
-		gs_usart_write_buf[6] = 0;
+		gs_usart_write_buf[5] = timeout_2 >> 8;
+		gs_usart_write_buf[6] = timeout_2 & 0xff;
 	
-		gs_usart_write_buf[7] = 0;
-		gs_usart_write_buf[8] = 0;
+		gs_usart_write_buf[7] = (timeout_3/1000) >> 8;
+		gs_usart_write_buf[8] = (timeout_3/1000) & 0xff;
 	
 		stm32_dma_usart2_write(gs_usart_write_buf, 9 );
 		usart_rx_release();
 	
-		APP_DEBUG("usart read time %d-%d , %d , %d\r\n", 0, 0, 0, 0);
+		APP_DEBUG("usart read time %d-%d , %d , %d\r\n", 0, 0, timeout_2, timeout_3);
 		break;	
 		
 	case USART_API_READ_STATUS:
@@ -308,6 +312,87 @@ void usart_rx_callback(void)
 		
 		APP_DEBUG("usart read status, online num = %d\r\n", gs_online_num);
 		break;
+		
+	case USART_API_WRITE_PARAMETER1:
+		/* CMD(1) + FHKEY(4) + SF(0.4) + SB(0.4) + EC(0.5) */
+		len = usart_rx_get_length();
+		if(len == 7) {
+			publicMsg.HoppingFrequencieSeed = (usart_buffer[1] << 24) | (usart_buffer[2] << 16) | (usart_buffer[3] << 8) | usart_buffer[4];
+			APP_DEBUG(" Seed = %d \r\n", publicMsg.HoppingFrequencieSeed );
+			if( (usart_buffer[5] >> 4) >= 6 && (usart_buffer[5] >> 4) <= 12 ) {
+				publicMsg.SpreadingFactor = usart_buffer[5] >> 4;
+				APP_DEBUG(" Sf = %d \r\n", publicMsg.SpreadingFactor );
+			}
+			if( (usart_buffer[5] & 0xf) >= 0 && (usart_buffer[5] & 0xf) <= 9 ) {
+				publicMsg.SignalBw = usart_buffer[5] & 0xf;
+				APP_DEBUG(" Bw = %d \r\n", publicMsg.SignalBw );
+			}
+			if( (usart_buffer[6] >> 5) >= 1 && (usart_buffer[6] >> 5) <= 4 ) {
+				publicMsg.ErrorCoding = usart_buffer[2] >> 5;
+				APP_DEBUG(" Ec = %d \r\n", publicMsg.ErrorCoding );
+			}
+			lora_net_Set_Config(&lora[1],  &publicMsg);
+			APP_DEBUG("lora config M1 \r\n");
+			cmd = USART_API_WRITE_PARAMETER1 | 0x80;
+			interface_usart_write_wait();
+			interface_usart_write( &cmd, 1);
+			APP_DEBUG("usart write para1 \r\n");
+		}
+	
+		usart_rx_release();
+		break;
+
+	case USART_API_WRITE_PARAMETER2:
+		/* CMD(1) + SF(0.4) + SB(0.4) + EC(0.5) */
+		len = usart_rx_get_length();
+		if(len == 3) {
+			if( (usart_buffer[1] >> 4) >= 6 && (usart_buffer[1] >> 4) <= 12 ) {
+				privateMsg.SpreadingFactor = usart_buffer[1] >> 4;
+				APP_DEBUG(" Sf = %d \r\n", privateMsg.SpreadingFactor );
+			}
+			if( (usart_buffer[1] & 0xf) >= 0 && (usart_buffer[1] & 0xf) <= 9 ) {
+				privateMsg.SignalBw = usart_buffer[1] & 0xf;
+				APP_DEBUG(" Bw = %d \r\n", privateMsg.SignalBw );
+			}
+			if( (usart_buffer[2] >> 5) >= 1 && (usart_buffer[2] >> 5) <= 4 ) {
+				privateMsg.ErrorCoding = usart_buffer[2] >> 5;
+				APP_DEBUG(" Ec = %d \r\n", privateMsg.ErrorCoding );
+			}
+			cmd = USART_API_WRITE_PARAMETER2 | 0x80;
+			interface_usart_write_wait();
+			interface_usart_write( &cmd, 1);
+			APP_DEBUG("usart write para2 \r\n");
+		}
+	
+		usart_rx_release();
+		break;
+
+	case USART_API_WRITE_MAX_NODE_NUM:
+		
+		cmd = USART_API_WRITE_MAX_NODE_NUM | 0x80;
+	
+		interface_usart_write_wait();
+		interface_usart_write( &cmd, 1);
+	
+		usart_rx_release();
+		APP_DEBUG("usart write max node num \r\n");
+		break;
+	
+	case USART_API_WRITE_TIME:
+		/* CMD(1) + RANDOM LOW(2) + RANDOM HIGH(2) + TIMEOUT(2) + ONLINE TIMEOUT(2) */
+		len = usart_rx_get_length();
+		if(len == 9) {
+			timeout_2 = (usart_buffer[5] << 8) | usart_buffer[6];
+			timeout_3 = (usart_buffer[7] << 8) | usart_buffer[8];
+			timeout_3 *= 1000;
+			cmd = USART_API_WRITE_TIME | 0x80;
+			interface_usart_write_wait();
+			interface_usart_write( &cmd, 1);
+			APP_DEBUG("usart write time %d %d, %d, %d\r\n", 0, 0, timeout_2, timeout_3);
+		}
+	
+		usart_rx_release();
+		break;	
 	
 	case USART_API_READ_BUSY:
 		/* CMD(1) + STATUS（1） */
@@ -443,7 +528,7 @@ void private_message_callback(struct sLORA_NET *netp)
 		//APP_DEBUG("time = %d ms Rssi: %g Snr = %d dB\033[0m\r\n",(int)(TickCounter - RXtimer), TableMsg[current_use_user_id].RxPacketRssiValue, TableMsg[current_use_user_id].RxPacketSnrValue);
 		
 		lora_put_data_callback();
-		soft_timer_create(GATEWAY_TIMER_PRIVATE_MSG_TIMEOUT, 1, 1, private_write_timeout_callback, PACK_TIMEOUT);
+		soft_timer_create(GATEWAY_TIMER_PRIVATE_MSG_TIMEOUT, 1, 1, private_write_timeout_callback, timeout_2); //PACK_TIMEOUT
 		RXtimer = TickCounter;
 		
 		long_debug_timeout = 0;  //debug add 2018 09 02
@@ -606,7 +691,8 @@ void online_num_tips_callback(void)
 	
 	TableMsgDeinit();
 	
-	for(i=0;i<LORA_MODEL_NUM;i++) {
+	//for(i=0;i<LORA_MODEL_NUM;i++) {
+	for(i=1;i>=0;i--) {
 		
 		uint64_t delay_tm = 0;
 		delay_tm = TickCounter;
@@ -655,7 +741,7 @@ void online_num_tips_callback(void)
 	soft_timer_create(GATEWAY_TIMER_LEDS, 1, 1, led_status_callback, 200);  //200ms
 	
 	/* always running, 单节点查询超时，接收到私有信道数据后重置 */
-	soft_timer_create(GATEWAY_TIMER_PRIVATE_MSG_TIMEOUT, 1, 1, private_write_timeout_callback, PACK_TIMEOUT);
+	soft_timer_create(GATEWAY_TIMER_PRIVATE_MSG_TIMEOUT, 1, 1, private_write_timeout_callback, timeout_2); //PACK_TIMEOUT
 	
 	while(1) {
 		

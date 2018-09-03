@@ -23,6 +23,10 @@
 /*
  *  model message
 */
+uint16_t timeout_1x1 = RANDOM_TIMEOUT_LOW;
+uint16_t timeout_1x2 = RANDOM_TIMEOUT_HIGH;
+uint16_t timeout_2 = PACK_TIMEOUT;
+uint16_t timeout_3 = TIMEOUT_ONLINE;
 LORA_NET lora[LORA_MODEL_NUM];
 uint8_t node_stats = NODE_STATUS_OFFLINE;
 tTableMsg privateMsg = {
@@ -131,21 +135,21 @@ void usart_rx_callback(void)
 		/* CMD(1) + RANDOM LOW(2) + RANDOM HIGH(2) + TIMEOUT(2) + ONLINE TIMEOUT(2) */
 		gs_usart_write_buf[0] = USART_API_READ_TIME | 0x80;
 		
-		gs_usart_write_buf[1] = 0;
-		gs_usart_write_buf[2] = 0;
-		gs_usart_write_buf[3] = 0;
-		gs_usart_write_buf[4] = 0;
-	
-		gs_usart_write_buf[5] = 0;
-		gs_usart_write_buf[6] = 0;
-	
-		gs_usart_write_buf[7] = 0;
-		gs_usart_write_buf[8] = 0;
+		gs_usart_write_buf[1] = timeout_1x1 >> 8;
+		gs_usart_write_buf[2] = timeout_1x1 & 0xff;
+		gs_usart_write_buf[3] = timeout_1x2 >> 8;
+		gs_usart_write_buf[4] = timeout_1x2 & 0xff;
+
+		gs_usart_write_buf[5] = timeout_2 >> 8;
+		gs_usart_write_buf[6] = timeout_2 & 0xff;
+
+		gs_usart_write_buf[7] = (timeout_3/1000) >> 8;
+		gs_usart_write_buf[8] = (timeout_3/1000) & 0xff;
 	
 		stm32_dma_usart2_write(gs_usart_write_buf, 9 );
 		usart_rx_release();
 	
-		APP_DEBUG("usart read time %d-%d , %d , %d\r\n", 0, 0, 0, 0);
+		APP_DEBUG("usart read time %d-%d , %d , %d\r\n", timeout_1x1, timeout_1x2, timeout_2, timeout_3);
 		break;
 		
 	case USART_API_READ_STATUS:
@@ -168,6 +172,60 @@ void usart_rx_callback(void)
 		
 		APP_DEBUG("usart read status, status = %d\r\n", node_stats);
 		break;
+	
+	case USART_API_WRITE_PARAMETER1:
+		/* CMD(1) + FHKEY(4) + SF(0.4) + SB(0.4) + EC(0.5) */
+		len = usart_rx_get_length();
+		if(len == 7) {
+			publicMsg.HoppingFrequencieSeed = (usart_buffer[1] << 24) | (usart_buffer[2] << 16) | (usart_buffer[3] << 8) | usart_buffer[4];
+			APP_DEBUG(" Seed = %d \r\n", publicMsg.HoppingFrequencieSeed );
+			if( (usart_buffer[5] >> 4) >= 6 && (usart_buffer[5] >> 4) <= 12 ) {
+				publicMsg.SpreadingFactor = usart_buffer[5] >> 4;
+				APP_DEBUG(" Sf = %d \r\n", publicMsg.SpreadingFactor );
+			}
+			if( (usart_buffer[5] & 0xf) >= 0 && (usart_buffer[5] & 0xf) <= 9 ) {
+				publicMsg.SignalBw = usart_buffer[5] & 0xf;
+				APP_DEBUG(" Bw = %d \r\n", publicMsg.SignalBw );
+			}
+			if( (usart_buffer[6] >> 5) >= 1 && (usart_buffer[6] >> 5) <= 4 ) {
+				publicMsg.ErrorCoding = usart_buffer[2] >> 5;
+				APP_DEBUG(" Ec = %d \r\n", publicMsg.ErrorCoding );
+			}
+			gs_usart_write_buf[0] = USART_API_WRITE_PARAMETER1 | 0x80;
+			stm32_dma_usart2_write(gs_usart_write_buf,  1);
+			APP_DEBUG("usart write para1 \r\n");
+		}
+	
+		usart_rx_release();
+		break;
+
+	case USART_API_WRITE_PARAMETER2:
+		/* CMD(1) + SF(0.4) + SB(0.4) + EC(0.5) */
+		APP_DEBUG("usart write para2 \r\n");
+		usart_rx_release();
+		break;
+
+	case USART_API_WRITE_MAX_NODE_NUM:
+		APP_DEBUG("usart write max node num \r\n");
+		usart_rx_release();
+		break;
+	
+	case USART_API_WRITE_TIME:
+		/* CMD(1) + RANDOM LOW(2) + RANDOM HIGH(2) + TIMEOUT(2) + ONLINE TIMEOUT(2) */
+		len = usart_rx_get_length();
+		if(len == 9) {
+			timeout_1x1 = (usart_buffer[1] << 8) | usart_buffer[2];
+			timeout_1x2 = (usart_buffer[3] << 8) | usart_buffer[4];
+			timeout_2 = (usart_buffer[5] << 8) | usart_buffer[6];
+			timeout_3 = (usart_buffer[7] << 8) | usart_buffer[8];
+			timeout_3 *= 1000;
+			gs_usart_write_buf[0] = USART_API_WRITE_TIME | 0x80;
+			stm32_dma_usart2_write(gs_usart_write_buf,  1);
+			APP_DEBUG("usart write time %d %d, %d, %d\r\n", timeout_1x1, timeout_1x2, timeout_2, timeout_3);
+		}
+	
+		usart_rx_release();
+		break;	
 	
 	case USART_API_READ_BUSY:
 		/* CMD(1) + STATUS（1） */

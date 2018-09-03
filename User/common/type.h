@@ -20,6 +20,9 @@
 
 #define LORA_MAX_NODE_NUM (16)
 
+#define RANDOM_TIMEOUT_LOW   (4000)
+#define RANDOM_TIMEOUT_HIGH  (14000)
+
 #define TIMEOUT_ONLINE (60000)   //60s
 
 #define PACK_TIMEOUT   (1200)   //1s

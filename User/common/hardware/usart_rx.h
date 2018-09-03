@@ -13,6 +13,11 @@
 #define USART_API_READ_MAX_NODE_NUM  (0x03)
 #define USART_API_READ_TIME          (0x04)
 #define USART_API_READ_STATUS        (0x05)
+
+#define USART_API_WRITE_PARAMETER1   (0x06)
+#define USART_API_WRITE_PARAMETER2   (0x07)
+#define USART_API_WRITE_MAX_NODE_NUM (0x08)
+#define USART_API_WRITE_TIME         (0x09)
 #define USART_API_READ_BUSY          (0x0A)
 #define USART_API_SEND_USER_DATA     (0x0B)
 
