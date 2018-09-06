@@ -666,7 +666,7 @@ void online_num_tips_callback(void)
 	int main(void)
 #endif
 {
-	int i;
+	int i, j;
 	
 	NVIC_PriorityGroupConfig(NVIC_PriorityGroup_0);
 	
@@ -691,43 +691,46 @@ void online_num_tips_callback(void)
 	
 	TableMsgDeinit();
 	
-	//for(i=0;i<LORA_MODEL_NUM;i++) {
-	for(i=1;i>=0;i--) {
+	for(j=0;j<2;j++) {
 		
-		uint64_t delay_tm = 0;
-		delay_tm = TickCounter;
-		while(TickCounter - delay_tm < 200);
-		
-		/* Fill Default Value */
-		SX1276LoRaDeinit( &lora[i].loraConfigure );
-		
-		/* Configure Low Level Function */
-		if(i == 0) {
+		//for(i=0;i<LORA_MODEL_NUM;i++) {
+		for(i=1;i>=0;i--) {
 			
-			lora[i].loraConfigure.LoraLowLevelFunc.SX1276InitIo = SX1276InitIo;
-			lora[i].loraConfigure.LoraLowLevelFunc.SX1276Read = SX1276Read;
-			lora[i].loraConfigure.LoraLowLevelFunc.SX1276Write = SX1276Write;
-			lora[i].loraConfigure.LoraLowLevelFunc.SX1276ReadBuffer = SX1276ReadBuffer;
-			lora[i].loraConfigure.LoraLowLevelFunc.SX1276WriteBuffer = SX1276WriteBuffer;
-			lora[i].loraConfigure.LoraLowLevelFunc.read_single_reg = read_single_reg;
+			uint64_t delay_tm = 0;
+			delay_tm = TickCounter;
+			while(TickCounter - delay_tm < 200);
 			
-			lora[i].loraConfigure.random_getRandomFreq = random_getRandomFreq;
-			lora[i].lora_net_rx_callback = private_message_callback;
+			/* Fill Default Value */
+			SX1276LoRaDeinit( &lora[i].loraConfigure );
 			
-		} else {
+			/* Configure Low Level Function */
+			if(i == 0) {
+				
+				lora[i].loraConfigure.LoraLowLevelFunc.SX1276InitIo = SX1276InitIo;
+				lora[i].loraConfigure.LoraLowLevelFunc.SX1276Read = SX1276Read;
+				lora[i].loraConfigure.LoraLowLevelFunc.SX1276Write = SX1276Write;
+				lora[i].loraConfigure.LoraLowLevelFunc.SX1276ReadBuffer = SX1276ReadBuffer;
+				lora[i].loraConfigure.LoraLowLevelFunc.SX1276WriteBuffer = SX1276WriteBuffer;
+				lora[i].loraConfigure.LoraLowLevelFunc.read_single_reg = read_single_reg;
+				
+				lora[i].loraConfigure.random_getRandomFreq = random_getRandomFreq;
+				lora[i].lora_net_rx_callback = private_message_callback;
+				
+			} else {
+				
+				lora[i].loraConfigure.LoraLowLevelFunc.SX1276InitIo = SX1276InitIo2;
+				lora[i].loraConfigure.LoraLowLevelFunc.SX1276Read = SX1276Read2;
+				lora[i].loraConfigure.LoraLowLevelFunc.SX1276Write = SX1276Write2;
+				lora[i].loraConfigure.LoraLowLevelFunc.SX1276ReadBuffer = SX1276ReadBuffer2;
+				lora[i].loraConfigure.LoraLowLevelFunc.SX1276WriteBuffer = SX1276WriteBuffer2;
+				lora[i].loraConfigure.LoraLowLevelFunc.read_single_reg = read_single_reg2;
+				
+				lora[i].loraConfigure.random_getRandomFreq = random_getRandomFreq;
+				lora[i].lora_net_rx_callback = public_message_callback;
+			}
 			
-			lora[i].loraConfigure.LoraLowLevelFunc.SX1276InitIo = SX1276InitIo2;
-			lora[i].loraConfigure.LoraLowLevelFunc.SX1276Read = SX1276Read2;
-			lora[i].loraConfigure.LoraLowLevelFunc.SX1276Write = SX1276Write2;
-			lora[i].loraConfigure.LoraLowLevelFunc.SX1276ReadBuffer = SX1276ReadBuffer2;
-			lora[i].loraConfigure.LoraLowLevelFunc.SX1276WriteBuffer = SX1276WriteBuffer2;
-			lora[i].loraConfigure.LoraLowLevelFunc.read_single_reg = read_single_reg2;
-			
-			lora[i].loraConfigure.random_getRandomFreq = random_getRandomFreq;
-			lora[i].lora_net_rx_callback = public_message_callback;
+			lora_net_init(&lora[i]);
 		}
-		
-		lora_net_init(&lora[i]);
 	}
 	
 	lora_net_Set_Config(&lora[0],  &privateMsg);

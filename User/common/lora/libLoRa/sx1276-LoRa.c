@@ -111,6 +111,8 @@ tLoRaSettings LoRaSettings =
 
 void SX1276LoRaDeinit(tLora *loraConfigure)
 {
+	memset(loraConfigure , 0, sizeof(tLora) );
+	
     loraConfigure->SX1276LR = ( tSX1276LR* )(loraConfigure->SX1276Regs);
     loraConfigure->RFLRState = RFLR_STATE_IDLE;
     loraConfigure->RxPacketSize = 0;
