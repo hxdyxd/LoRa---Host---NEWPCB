@@ -187,7 +187,7 @@ void usart_rx_callback(void)
 				APP_DEBUG(" Bw = %d \r\n", publicMsg.SignalBw );
 			}
 			if( (usart_buffer[6] >> 5) >= 1 && (usart_buffer[6] >> 5) <= 4 ) {
-				publicMsg.ErrorCoding = usart_buffer[2] >> 5;
+				publicMsg.ErrorCoding = usart_buffer[6] >> 5;
 				APP_DEBUG(" Ec = %d \r\n", publicMsg.ErrorCoding );
 			}
 			gs_usart_write_buf[0] = USART_API_WRITE_PARAMETER1 | 0x80;

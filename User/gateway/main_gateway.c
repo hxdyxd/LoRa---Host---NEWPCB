@@ -328,7 +328,7 @@ void usart_rx_callback(void)
 				APP_DEBUG(" Bw = %d \r\n", publicMsg.SignalBw );
 			}
 			if( (usart_buffer[6] >> 5) >= 1 && (usart_buffer[6] >> 5) <= 4 ) {
-				publicMsg.ErrorCoding = usart_buffer[2] >> 5;
+				publicMsg.ErrorCoding = usart_buffer[6] >> 5;
 				APP_DEBUG(" Ec = %d \r\n", publicMsg.ErrorCoding );
 			}
 			lora_net_Set_Config(&lora[1],  &publicMsg);
@@ -563,6 +563,11 @@ void public_message_callback(struct sLORA_NET *netp)
 		
 		/* 等待接收完成 */
 		TableMsg[current_id].HoppingFrequencieSeed = random_get_value();
+		/* bug 2018 09 06 */
+		TableMsg[current_id].SpreadingFactor = privateMsg.SpreadingFactor;  // 7 SpreadingFactor [6: 64, 7: 128, 8: 256, 9: 512, 10: 1024, 11: 2048, 12: 4096  chips]
+		TableMsg[current_id].SignalBw = privateMsg.SignalBw;                // 9 SignalBw [0: 7.8kHz, 1: 10.4 kHz, 2: 15.6 kHz, 3: 20.8 kHz, 4: 31.2 kHz,
+												                      // 5: 41.6 kHz, 6: 62.5 kHz, 7: 125 kHz, 8: 250 kHz, 9: 500 kHz, other: Reserved]
+		TableMsg[current_id].ErrorCoding = privateMsg.ErrorCoding;          // ErrorCoding [1: 4/5, 2: 4/6, 3: 4/7, 4: 4/8]
 		
 		/* 2018 08 29 add config mode */
 		if(gateway_stats == GATEWAY_STATUS_CONFIG_ON) {
