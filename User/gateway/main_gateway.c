@@ -503,7 +503,7 @@ void private_message_callback(struct sLORA_NET *netp)
 					gs_usart_write_buf[0] = USART_API_SEND_USER_DATA_UCM | 0x80;
 					stm32_dma_usart2_write(gs_usart_write_buf, len + 1);
 					
-					lora_net_debug_hex(netp->pack.Data, len - 1, 1);
+					lora_net_debug_hex(netp->pack.Data, len, 1);
 				}
 				break;
 			
@@ -515,7 +515,7 @@ void private_message_callback(struct sLORA_NET *netp)
 				stm32_dma_usart2_write(gs_usart_write_buf, len + 25);
 				
 				APP_DEBUG("Node %d data = ", current_use_user_id);
-				lora_net_debug_hex(netp->pack.Data, len - 1, 1);
+				lora_net_debug_hex(netp->pack.Data, len, 1);
 				break;
 			
 			default:

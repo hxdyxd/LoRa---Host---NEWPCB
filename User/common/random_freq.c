@@ -78,25 +78,49 @@ uint32_t random_get_value(void)
 	return rand_value;
 }
 
+
+/*********************v1*************************/
+static unsigned long next = 1;
+
+/* RAND_MAX assumed to be 32767 */
+int rand_v1(void)
+{
+    next = next * 1103515245 + 12345;
+    return ((unsigned)(next/65536) % 32768);
+}
+
+void srand_v1(unsigned seed)
+{
+    next = seed;
+}
+
+#define  SRAND  srand_v1
+#define  RAND   rand_v1
+/**********************************************/
+
+
 uint32_t random_getRandomFreq(uint32_t seed, int index)
 {
-	int i;
-	srand(seed);
-	for(i=0;i<index;i++) {
-		rand();
-	}
+    int i;
+    SRAND(seed);
+    for(i=0;i<index;i++) {
+        RAND();
+    }
 
-	return( 410000000 + 250000 * (rand() % (400 - 1)) );
+    uint32_t freq = ( 410000000 + 250000 * (RAND() % (400 - 1)) );
+    //printf("%08x[%d] %d\r\n", seed, index, freq);
+    return freq;
 }
 
 uint32_t random_getRandomTime(uint32_t seed)
 {
-	int i;
-	int min = timeout_1x1;
-	int max = timeout_1x2;
-	srand(seed);
-	for(i=0;i<seed%20;i++) {
-		rand();
-	}
-	return min + (rand() % (max - min - 1));
+    int i;
+    int min = timeout_1x1;
+    int max = timeout_1x2;
+    SRAND(seed);
+    for(i=0;i<seed%20;i++) {
+        RAND();
+    }
+    return min + (RAND() % (max - min - 1));
 }
+
